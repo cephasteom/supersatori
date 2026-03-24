@@ -14,14 +14,18 @@ s.waitForBoot {
         dict
     };
 
-    // each stream gets its own group and voice dictionary
+    // each stream gets its own group, private bus, and voice dictionary
     ~groups     = Dictionary.new;
+    ~buses      = Dictionary.new; // stream -> private audio Bus
     ~voices     = Dictionary.new; // stream -> Dictionary(note -> synth)
     ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
 
     ~getGroup = { |stream|
         ~groups[stream] ?? {
+            var bus   = Bus.audio(s, 2);
             var group = Group.new(s);
+            Synth.new(\satoriLimiter, [\in, bus.index, \out, 0], group, \addToTail);
+            ~buses[stream]  = bus;
             ~groups[stream] = group;
             "Satori: created group for stream %".format(stream).postln;
             group
@@ -92,7 +96,7 @@ s.waitForBoot {
                     ~releaseVoice.(stream, note);
                     if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
 
-                    synth = Synth(inst.asSymbol, params.getPairs, group, \addToHead);
+                    synth = Synth(inst.asSymbol, params.getPairs ++ [\out, ~buses[stream].index], group, \addToHead);
                     voices[note] = synth;
                     order.add(note);
 
