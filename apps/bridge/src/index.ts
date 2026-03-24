@@ -9,6 +9,7 @@ interface OscArg {
 }
 
 type JsonPrimitive = string | number | boolean | null
+type JsonValue = JsonPrimitive | JsonValue[]
 
 const udpPort = new osc.UDPPort({
   remoteAddress: '127.0.0.1',
@@ -19,7 +20,8 @@ udpPort.open()
 
 const wss = new WebSocketServer({ port: 8080 })
 
-function toOscArg(value: JsonPrimitive): OscArg | null {
+function toOscArg(value: JsonValue): OscArg | null {
+  if (Array.isArray(value))       return { type: 's', value: value.join(',') }
   if (typeof value === 'string')  return { type: 's', value }
   if (typeof value === 'boolean') return { type: 'i', value: value ? 1 : 0 }
   if (typeof value === 'number')  return Number.isInteger(value)

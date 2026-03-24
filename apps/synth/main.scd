@@ -36,6 +36,27 @@ s.waitForBoot {
         }
     };
 
+    // Normalise cut value to an array of stream name strings
+    // Accepts: 0, "s0", "0,1", "s0,s1", "all"
+    ~resolveStreams = { |cut|
+        if(cut.asString == "all") {
+            ~voices.keys.asArray
+        } {
+            cut.asString.split($,).collect { |item|
+                var t = item.asString.stripWhiteSpace;
+                if(t.every { |c| c.isDecDigit }) { "s" ++ t } { t }
+            }
+        }
+    };
+
+    ~cutStreams = { |cut|
+        ~resolveStreams.(cut).do { |stream|
+            ~voices[stream].do { |synth| synth.set(\gate, 0) };
+            ~voices[stream]     = Dictionary.new;
+            ~voiceOrder[stream] = List.new;
+        };
+    };
+
     ~releaseVoice = { |stream, note|
         var v = ~voices[stream];
         if(v.notNil && v[note].notNil) {
@@ -58,6 +79,9 @@ s.waitForBoot {
 
             if(type == "event") {
                 var inst = params[\inst];
+                
+                if(params[\cut].notNil) { ~cutStreams.(params[\cut]) };
+
                 if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
                     var dur    = (params[\dur] ?? 250) / 1000;
                     var note   = params[\n] ?? 60;
