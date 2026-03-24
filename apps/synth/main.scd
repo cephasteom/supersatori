@@ -49,9 +49,9 @@ s.waitForBoot {
         }
     };
 
-    ~cutStreams = { |cut|
+    ~cutStreams = { |cut, cutr = 5|
         ~resolveStreams.(cut).do { |stream|
-            ~voices[stream].do { |synth| synth.set(\gate, 0) };
+            ~voices[stream].do { |synth| synth.set(\r, cutr, \gate, 0) };
             ~voices[stream]     = Dictionary.new;
             ~voiceOrder[stream] = List.new;
         };
@@ -80,7 +80,7 @@ s.waitForBoot {
             if(type == "event") {
                 var inst = params[\inst];
                 
-                if(params[\cut].notNil) { ~cutStreams.(params[\cut]) };
+                if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
 
                 if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
                     var dur    = (params[\dur] ?? 250) / 1000;
