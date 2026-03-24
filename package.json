@@ -1,0 +1,19 @@
+{
+  "name": "super-satori",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "bridge": "npm run start --workspace=apps/bridge",
+    "synth": "node scripts/sclang.js",
+    "start": "concurrently --names bridge,synth \"npm run bridge\" \"npm run synth\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
