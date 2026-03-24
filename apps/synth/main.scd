@@ -17,18 +17,63 @@ s.waitForBoot {
     // each stream gets its own group, private bus, and voice dictionary
     ~groups     = Dictionary.new;
     ~buses      = Dictionary.new; // stream -> private audio Bus
+    ~limiters   = Dictionary.new; // stream -> limiter Synth (anchor for effect insertion)
+    ~effects    = Dictionary.new; // stream -> Dictionary(effectName -> Synth)
     ~voices     = Dictionary.new; // stream -> Dictionary(note -> synth)
     ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
 
+    // Known effects: key = param name, value = SynthDef name
+    ~knownEffects = Dictionary.newFrom([\reverb, \satoriReverb]);
+
     ~getGroup = { |stream|
         ~groups[stream] ?? {
-            var bus   = Bus.audio(s, 2);
-            var group = Group.new(s);
-            Synth.new(\satoriLimiter, [\in, bus.index, \out, 0], group, \addToTail);
-            ~buses[stream]  = bus;
-            ~groups[stream] = group;
+            var bus     = Bus.audio(s, 2);
+            var group   = Group.new(s);
+            var limiter = Synth.new(\satoriLimiter, [\in, bus.index, \out, 0], group, \addToTail);
+            ~buses[stream]   = bus;
+            ~limiters[stream] = limiter;
+            ~groups[stream]  = group;
+            ~effects[stream] = Dictionary.new;
             "Satori: created group for stream %".format(stream).postln;
             group
+        }
+    };
+
+    // Extract params for an effect by stripping its name prefix
+    // e.g. (reverb, {reverb: 0.5, reverbroom: 0.8}) -> [\wet, 0.5, \size, 0.8]
+    // Extract SynthDef args for an effect from params, stripping the effect name prefix
+    // e.g. effectName=reverb, params={reverb:0.5, reverbroom:0.8} -> [\wet, 0.5, \size, 0.8]
+    ~effectParams = { |effectName, params|
+        var prefix = effectName.asString;
+        var pairs  = [];
+        params.keysValuesDo { |key, val|
+            var k = key.asString;
+            if(k == prefix) {
+                pairs = pairs ++ [\wet, val];
+            } {
+                if(k.beginsWith(prefix)) {
+                    pairs = pairs ++ [k.copyToEnd(prefix.size).asSymbol, val];
+                }
+            }
+        };
+        pairs.postln;
+        pairs
+    };
+
+    ~applyEffects = { |stream, params|
+        var streamEffects = ~effects[stream];
+        ~knownEffects.keysValuesDo { |effectName, synthDefName|
+            var wet = params[effectName];
+            if(wet.notNil) {
+                var pairs = [\in, ~buses[stream].index] ++ ~effectParams.(effectName, params);
+                if(streamEffects[effectName].isNil) {
+                    streamEffects[effectName] = Synth.new(
+                        synthDefName, pairs, ~limiters[stream], \addBefore
+                    );
+                } {
+                    streamEffects[effectName].set(*pairs);
+                }
+            }
         }
     };
 
@@ -83,8 +128,9 @@ s.waitForBoot {
 
             if(type == "event") {
                 var inst = params[\inst];
-                
+
                 if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
+                ~applyEffects.(stream, params);
 
                 if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
                     var dur    = (params[\dur] ?? 250) / 1000;

@@ -1,3 +1,9 @@
+// Reverb — reads from and replaces the group's private bus
+SynthDef(\satoriReverb, { |in=0, wet=0.5, room=0.8, damp=1.0|
+    var sig = In.ar(in, 2);
+    ReplaceOut.ar(in, FreeVerb2.ar(sig[0], sig[1], wet, room, damp));
+}).add;
+
 // Per-stream limiter — sits at the tail of each group's private bus
 SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
     Out.ar(out, Limiter.ar(In.ar(in, 2), level));
