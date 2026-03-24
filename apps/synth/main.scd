@@ -129,6 +129,13 @@ s.waitForBoot {
             var params = ~parseParams.(msg[1..]);
             var group  = ~getGroup.(stream);
 
+            if(type == "mutation") {
+                var pairs = params.getPairs;
+                pairs.postln;
+                ~voices[stream].do { |synth| synth.set(*pairs) };
+                ~applyEffects.(stream, params);
+            };
+
             if(type == "event") {
                 var inst = params[\inst];
 
