@@ -23,7 +23,11 @@ s.waitForBoot {
     ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
 
     // Known effects: key = param name, value = SynthDef name
-    ~knownEffects = Dictionary.newFrom([\reverb, \satoriReverb]);
+    ~knownEffects = Dictionary.newFrom([
+        \reverb, \satoriReverb,
+        \delay,  \satoriDelay,
+        \chorus, \satoriChorus
+    ]);
 
     ~getGroup = { |stream|
         ~groups[stream] ?? {
