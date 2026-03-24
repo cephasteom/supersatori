@@ -60,7 +60,6 @@ s.waitForBoot {
                 }
             }
         };
-        pairs.postln;
         pairs
     };
 
