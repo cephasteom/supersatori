@@ -48,6 +48,7 @@ wss.on('connection', ws => {
     const address = `/satori/${msg.id}/${msgType}`
     const args = [
       { type: 's' as const, value: 'cps' }, { type: 'f' as const, value: msg.cps ?? 0.5 },
+      { type: 's' as const, value: 'time' }, { type: 'f' as const, value: msg.time ?? 0 },
       ...Object.entries(msg.params).flatMap(([key, val]) => {
         if(key === 'e' || key === 'm') return [] // skip type field
         const oscVal = toOscArg(val as JsonPrimitive)

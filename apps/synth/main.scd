@@ -14,6 +14,32 @@ s.waitForBoot {
         dict
     };
 
+    // Parallel TempoClock driven by incoming cps + cycle position
+    ~satoriClock = nil;
+    ~clockCps    = nil;
+
+    // Satori sends events ~1 second before their intended play time.
+    // We anchor the clock so that beat cycleTime fires 1 second from now,
+    // matching that lookahead. This de-jitters WebSocket timing variance.
+    ~lookahead = 0.1; // seconds — match Satori's JS-side lookahead
+
+    ~syncClock = { |cps, cycleTime|
+        if(~satoriClock.isNil) {
+            // beat cycleTime = thisThread.seconds + lookahead
+            ~satoriClock = TempoClock.new(cps, cycleTime, thisThread.seconds + ~lookahead);
+            ~clockCps = cps;
+            "Satori: clock started (% cps, lookahead %)".format(cps, ~lookahead).postln;
+        } {
+            if(cps != ~clockCps) {
+                // Re-anchor for new cps, preserving the lookahead offset
+                ~satoriClock.stop;
+                ~satoriClock = TempoClock.new(cps, cycleTime, thisThread.seconds + ~lookahead);
+                ~clockCps = cps;
+                "Satori: clock updated to % cps".format(cps).postln;
+            }
+        }
+    };
+
     // each stream gets its own group, private bus, and voice dictionary
     ~groups     = Dictionary.new;
     ~buses      = Dictionary.new; // stream -> private audio Bus
@@ -217,11 +243,20 @@ s.waitForBoot {
         var path = msg[0].asString;
 
         if(path.beginsWith("/satori/")) {
-            var parts  = path.split($/).reject { |s| s.isEmpty };
-            var stream = parts[1]; // e.g. "s0"
-            var type   = parts[2]; // "event" or "mutation"
-            var params = ~parseParams.(msg[1..]);
-            var group  = ~getGroup.(stream);
+            var parts     = path.split($/).reject { |s| s.isEmpty };
+            var stream    = parts[1]; // e.g. "s0"
+            var type      = parts[2]; // "event" or "mutation"
+            var params    = ~parseParams.(msg[1..]);
+            var cycleTime = (params[\time] ?? 0).asFloat;
+            var cps       = (params[\cps]  ?? 0.5).asFloat;
+            params.removeAt(\time); // don't forward scheduling metadata to synths
+
+            // Ensure group/bus infrastructure exists immediately (before scheduling)
+            ~getGroup.(stream);
+
+            ~syncClock.(cps, cycleTime);
+
+            ~satoriClock.schedAbs(cycleTime, {
 
             if(type == "mutation") {
                 var pairs = params.getPairs;
@@ -271,7 +306,7 @@ s.waitForBoot {
                     ~releaseVoice.(stream, note);
                     if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
 
-                    synth = Synth(inst.asSymbol, params.getPairs ++ [\out, ~buses[stream].index], group, \addToHead);
+                    synth = Synth(inst.asSymbol, params.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
                     voices[note] = synth;
                     order.add(note);
 
@@ -285,6 +320,8 @@ s.waitForBoot {
                     "Satori: no SynthDef found for inst '%'".format(inst).postln;
                 };
             };
+
+            nil }); // end schedAbs
         }
     };
 
