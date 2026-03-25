@@ -24,6 +24,8 @@ s.waitForBoot {
 
     // Sample banks: bankName -> Array of Buffers (sorted by filename)
     ~banks = Dictionary.new;
+    // Zero-crossing snap points: bankName -> Array of Arrays of Float (0-1 positions)
+    ~transients = Dictionary.new;
 
     ~loadSamples = {
         var configPath = thisProcess.nowExecutingPath.dirname +/+ "samples-config.scd";
@@ -41,17 +43,53 @@ s.waitForBoot {
                             .sort   { |a, b| a.fileName < b.fileName }
                             .keep(maxN);
                         if(files.size > 0) {
-                            ~banks[bankName] = files.collect { |f|
-                                // Normalise to stereo: mono files get ch0 duplicated to both channels
-                                var sf    = SoundFile.new;
-                                var chans = if(sf.openRead(f.fullPath) && (sf.numChannels == 1)) {
+                            // Detect channel count for each file and load buffers
+                            var chansList = files.collect { |f|
+                                var sf = SoundFile.new;
+                                var ch = if(sf.openRead(f.fullPath) && (sf.numChannels == 1)) {
                                     sf.close; [0, 0]
-                                } {
-                                    sf.close; [0, 1]
-                                };
-                                Buffer.readChannel(s, f.fullPath, channels: chans);
+                                } { sf.close; [0, 1] };
+                                ch
+                            };
+                            ~banks[bankName] = files.collect { |f, i|
+                                Buffer.readChannel(s, f.fullPath, channels: chansList[i]);
                             };
                             "Satori: loaded bank '%' (% samples)".format(bankName, files.size).postln;
+
+                            // Analyse zero crossings in a background thread (one read per file)
+                            fork {
+                                var snapPoints = Array.newClear(files.size);
+                                files.do { |f, i|
+                                    var sf      = SoundFile.new;
+                                    var markers = [0.0];
+                                    if(sf.openRead(f.fullPath)) {
+                                        var nFrames    = sf.numFrames;
+                                        var nChans     = sf.numChannels;
+                                        var numMarkers = 256;
+                                        var stride     = max(1, (nFrames / numMarkers).floor).asInteger;
+                                        var data       = FloatArray.newClear(nFrames * nChans);
+                                        sf.readData(data);
+                                        sf.close;
+                                        numMarkers.do { |chunk|
+                                            var searchStart = (chunk * stride).asInteger;
+                                            var windowEnd   = min(searchStart + stride, nFrames - 1).asInteger;
+                                            var found = false;
+                                            (windowEnd - searchStart).do { |j|
+                                                var frame = searchStart + j;
+                                                if(found.not) {
+                                                    if(data[frame * nChans] * data[(frame + 1) * nChans] <= 0) {
+                                                        markers = markers.add(frame / nFrames);
+                                                        found = true;
+                                                    }
+                                                }
+                                            };
+                                        };
+                                    } { sf.close };
+                                    snapPoints[i] = markers;
+                                };
+                                ~transients[bankName] = snapPoints;
+                                "Satori: transients ready for bank '%'".format(bankName).postln;
+                            };
                         }
                     }
                 } {
@@ -198,7 +236,18 @@ s.waitForBoot {
                     var bufs = ~banks[bank];
                     
                     if(bufs.notNil && bufs.size > 0) {
-                        params[\buf] = bufs[idx % bufs.size].bufnum;
+                        var bufIdx = idx % bufs.size;
+                        var begin = params[\begin] ?? 0;
+                        
+                        params[\buf] = bufs[bufIdx].bufnum;
+
+                        // snap begin to nearest zero crossing if specified
+                        if(begin.notNil && begin > 0) {
+                            var markers = ~transients[bank] !? { |t| t[bufIdx] };
+                            if(markers.notNil && markers.size > 0) {
+                                params[\begin] = markers.minItem { |m| (m - begin).abs };
+                            }
+                        };
                     } {
                         "Satori: bank '%' not found or empty".format(bank).postln;
                     }
