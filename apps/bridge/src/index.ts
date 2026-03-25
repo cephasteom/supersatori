@@ -1,7 +1,7 @@
 import WebSocket, { WebSocketServer } from 'ws'
 import osc from 'osc'
 
-declare type Event = {id: string, params: Record<string, any>, time: number, type: string};
+declare type Event = {id: string, params: Record<string, any>, time: number, type: string, cps: number};
 
 interface OscArg {
   type: 's' | 'i' | 'f'
@@ -40,12 +40,15 @@ wss.on('connection', ws => {
     const msg = JSON.parse(raw.toString()) as Event
     const msgType = typeMap[msg.type] ?? 'event'
     const address = `/satori/${msg.id}/${msgType}`
-    const args = Object.entries(msg.params).flatMap(([key, val]) => {
-      if(key === 'e' || key === 'm') return [] // skip type field
-      const oscVal = toOscArg(val as JsonPrimitive)
-      if (!oscVal) return []
-      return [{ type: 's' as const, value: key }, oscVal]
-    })
+    const args = [
+      { type: 's' as const, value: 'cps' }, { type: 'f' as const, value: msg.cps ?? 0.5 },
+      ...Object.entries(msg.params).flatMap(([key, val]) => {
+        if(key === 'e' || key === 'm') return [] // skip type field
+        const oscVal = toOscArg(val as JsonPrimitive)
+        if (!oscVal) return []
+        return [{ type: 's' as const, value: key }, oscVal]
+      })
+    ]
 
     udpPort.send({ address, args })
   })
