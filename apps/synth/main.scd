@@ -60,10 +60,11 @@ s.waitForBoot {
                 }
             }
         };
+        if(params[\lag].notNil) { pairs = pairs ++ [\lag, params[\lag]] };
         pairs
     };
 
-    ~applyEffects = { |stream, params|
+    ~applyEffects = { |stream, params, type="event"|
         var streamEffects = ~effects[stream];
         ~knownEffects.keysValuesDo { |effectName, synthDefName|
             var wet = params[effectName];
@@ -76,6 +77,16 @@ s.waitForBoot {
                 } {
                     streamEffects[effectName].set(*pairs);
                 }
+            } {
+                if(type == "mutation" && streamEffects[effectName].notNil) {
+                    // apply sub-params (e.g. reverbroom) even without wet
+                    var pairs = ~effectParams.(effectName, params);
+                    if(pairs.size > 0) { streamEffects[effectName].set(*pairs) };
+                };
+                // if an event, set the wet param to 0 to bypass the effect if it's not included in the params
+                if(type == "event" && streamEffects[effectName].notNil) {
+                    streamEffects[effectName].set(\wet, 0);
+                };
             }
         }
     };
@@ -131,9 +142,8 @@ s.waitForBoot {
 
             if(type == "mutation") {
                 var pairs = params.getPairs;
-                pairs.postln;
                 ~voices[stream].do { |synth| synth.set(*pairs) };
-                ~applyEffects.(stream, params);
+                ~applyEffects.(stream, params, "mutation");
             };
 
             if(type == "event") {
