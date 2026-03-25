@@ -56,39 +56,43 @@ s.waitForBoot {
                             };
                             "Satori: loaded bank '%' (% samples)".format(bankName, files.size).postln;
 
-                            // Analyse zero crossings in a background thread (one read per file)
-                            fork {
-                                var snapPoints = Array.newClear(files.size);
-                                files.do { |f, i|
-                                    var sf      = SoundFile.new;
-                                    var markers = [0.0];
-                                    if(sf.openRead(f.fullPath)) {
-                                        var nFrames    = sf.numFrames;
-                                        var nChans     = sf.numChannels;
-                                        var numMarkers = 256;
-                                        var stride     = max(1, (nFrames / numMarkers).floor).asInteger;
-                                        var data       = FloatArray.newClear(nFrames * nChans);
-                                        sf.readData(data);
-                                        sf.close;
-                                        numMarkers.do { |chunk|
-                                            var searchStart = (chunk * stride).asInteger;
-                                            var windowEnd   = min(searchStart + stride, nFrames - 1).asInteger;
-                                            var found = false;
-                                            (windowEnd - searchStart).do { |j|
-                                                var frame = searchStart + j;
-                                                if(found.not) {
-                                                    if(data[frame * nChans] * data[(frame + 1) * nChans] <= 0) {
-                                                        markers = markers.add(frame / nFrames);
-                                                        found = true;
+                            if(~detectTransients) {
+                                // If enabled, detect zero crossings for each sample in a background thread and store as markers for snapping
+                                // Analyse zero crossings in a background thread (one read per file)
+                                fork {
+                                    var snapPoints = Array.newClear(files.size);
+                                    files.do { |f, i|
+                                        var sf      = SoundFile.new;
+                                        var markers = [0.0];
+                                        if(sf.openRead(f.fullPath)) {
+                                            var nFrames    = sf.numFrames;
+                                            var nChans     = sf.numChannels;
+                                            var numMarkers = 256;
+                                            var stride     = max(1, (nFrames / numMarkers).floor).asInteger;
+                                            var data       = FloatArray.newClear(nFrames * nChans);
+                                            sf.readData(data);
+                                            sf.close;
+                                            numMarkers.do { |chunk|
+                                                var searchStart = (chunk * stride).asInteger;
+                                                var windowEnd   = min(searchStart + stride, nFrames - 1).asInteger;
+                                                var found = false;
+                                                (windowEnd - searchStart).do { |j|
+                                                    var frame = searchStart + j;
+                                                    if(found.not) {
+                                                        if(data[frame * nChans] * data[(frame + 1) * nChans] <= 0) {
+                                                            markers = markers.add(frame / nFrames);
+                                                            found = true;
+                                                        }
                                                     }
-                                                }
+                                                };
+                                                0.yield; // yield between each window so OSC handlers can run
                                             };
-                                        };
-                                    } { sf.close };
-                                    snapPoints[i] = markers;
+                                        } { sf.close };
+                                        snapPoints[i] = markers;
+                                    };
+                                    ~transients[bankName] = snapPoints;
+                                    "Satori: transients ready for bank '%'".format(bankName).postln;
                                 };
-                                ~transients[bankName] = snapPoints;
-                                "Satori: transients ready for bank '%'".format(bankName).postln;
                             };
                         }
                     }
@@ -237,12 +241,13 @@ s.waitForBoot {
                     
                     if(bufs.notNil && bufs.size > 0) {
                         var bufIdx = idx % bufs.size;
-                        var begin = params[\begin] ?? 0;
+                        var begin  = params[\begin] ?? 0;
+                        var stt    = params[\stt] ?? 0;
                         
                         params[\buf] = bufs[bufIdx].bufnum;
 
                         // snap begin to nearest zero crossing if specified
-                        if(begin.notNil && begin > 0) {
+                        if(begin.notNil && begin > 0 && stt.notNil && stt > 0) {
                             var markers = ~transients[bank] !? { |t| t[bufIdx] };
                             if(markers.notNil && markers.size > 0) {
                                 params[\begin] = markers.minItem { |m| (m - begin).abs };
