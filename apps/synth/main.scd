@@ -91,7 +91,7 @@ s.waitForBoot {
                                         snapPoints[i] = markers;
                                     };
                                     ~transients[bankName] = snapPoints;
-                                    "Satori: transients ready for bank '%'".format(bankName).postln;
+                                    "Satori: transients ready fo;r bank '%'".format(bankName).postln;
                                 };
                             };
                         }
@@ -247,15 +247,15 @@ s.waitForBoot {
                         params[\buf] = bufs[bufIdx].bufnum;
 
                         // snap begin to nearest zero crossing if specified
-                        if(begin.notNil && begin > 0 && stt.notNil && stt > 0) {
-                            var markers = ~transients[bank] !? { |t| t[bufIdx] };
+                        if(begin.asBoolean && stt.asBoolean) {
+                            var markers = ~transients[bank] ?? [];
                             if(markers.notNil && markers.size > 0) {
                                 params[\begin] = markers.minItem { |m| (m - begin).abs };
                             }
                         };
                     } {
                         "Satori: bank '%' not found or empty".format(bank).postln;
-                    }
+                    };
                 };
 
                 if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
