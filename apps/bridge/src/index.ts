@@ -1,7 +1,13 @@
 import WebSocket, { WebSocketServer } from 'ws'
 import osc from 'osc'
 
-declare type Event = {id: string, params: Record<string, any>, time: number, type: string, cps: number};
+declare type Event = {
+  id: string, 
+  params: Record<string, any>, 
+  time: number, // in cycles, e.g. 1, 2.25, 3.065 etc.
+  type: string, 
+  cps: number
+};
 
 interface OscArg {
   type: 's' | 'i' | 'f'
