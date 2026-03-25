@@ -5,5 +5,8 @@
 
 ~sampleDirs = [
     // "~/samples",
-    // "/path/to/more/samples"
+    // "/path/to/more/samples",
 ];
+
+// Maximum number of samples to load per bank (files are sorted alphabetically, first N are kept)
+~maxBuffersPerBank = 16;

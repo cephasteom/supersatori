@@ -35,11 +35,22 @@ s.waitForBoot {
                 if(File.exists(expanded)) {
                     PathName(expanded).folders.do { |folder|
                         var bankName = folder.folderName.asSymbol;
+                        var maxN  = ~maxBuffersPerBank ?? 64;
                         var files = folder.files
                             .select { |f| audioExts.includesEqual(f.extension.toLower) }
-                            .sort   { |a, b| a.fileName < b.fileName };
+                            .sort   { |a, b| a.fileName < b.fileName }
+                            .keep(maxN);
                         if(files.size > 0) {
-                            ~banks[bankName] = files.collect { |f| Buffer.read(s, f.fullPath) };
+                            ~banks[bankName] = files.collect { |f|
+                                // Normalise to stereo: mono files get ch0 duplicated to both channels
+                                var sf    = SoundFile.new;
+                                var chans = if(sf.openRead(f.fullPath) && (sf.numChannels == 1)) {
+                                    sf.close; [0, 0]
+                                } {
+                                    sf.close; [0, 1]
+                                };
+                                Buffer.readChannel(s, f.fullPath, channels: chans);
+                            };
                             "Satori: loaded bank '%' (% samples)".format(bankName, files.size).postln;
                         }
                     }
@@ -179,18 +190,15 @@ s.waitForBoot {
             if(type == "event") {
                 var inst = params[\inst];
 
-                // Resolve inst:'sampler' + bank/i to the correct internal SynthDef
-                if(inst == "sampler") {
+                // Resolve inst:'sampler' + bank/i to a buffer
+                if(inst.asSymbol == \sampler) {
+
                     var bank = params[\bank].asSymbol;
                     var idx  = (params[\i] ?? 0).asInteger;
                     var bufs = ~banks[bank];
+                    
                     if(bufs.notNil && bufs.size > 0) {
-                        var buf = bufs[idx % bufs.size];
-                        params[\buf]  = buf.bufnum;
-                        params[\inst] = if(buf.numChannels == 1) { "samplerMono" } { "samplerStereo" };
-                        // use idx as the voice key so different samples don't steal each other
-                        if(params[\n].isNil) { params[\n] = idx };
-                        inst = params[\inst];
+                        params[\buf] = bufs[idx % bufs.size].bufnum;
                     } {
                         "Satori: bank '%' not found or empty".format(bank).postln;
                     }
