@@ -222,7 +222,9 @@ s.waitForBoot {
                     order.add(note);
 
                     SystemClock.sched(dur, {
-                        if(voices[note] === synth) { ~releaseVoice.(stream, note) };
+                        if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
+                            ~releaseVoice.(stream, note)
+                        };
                         nil
                     });
                 } {
