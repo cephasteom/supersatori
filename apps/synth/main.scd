@@ -155,7 +155,7 @@ s.waitForBoot {
 
     ~cutStreams = { |cut, cutr = 5|
         ~resolveStreams.(cut).do { |stream|
-            ~voices[stream].do { |synth| if(synth.isRunning) { synth.set(\r, cutr, \gate, 0) } };
+            ~voices[stream].do { |synth| synth.set(\r, cutr, \gate, 0) };
             ~voices[stream]     = Dictionary.new;
             ~voiceOrder[stream] = List.new;
         };
@@ -164,7 +164,7 @@ s.waitForBoot {
     ~releaseVoice = { |stream, note|
         var v = ~voices[stream];
         if(v.notNil && v[note].notNil) {
-            if(v[note].isRunning) { v[note].set(\gate, 0) };
+            v[note].set(\gate, 0);
             v.removeAt(note);
             ~voiceOrder[stream].remove(note);
         };
@@ -183,7 +183,7 @@ s.waitForBoot {
 
             if(type == "mutation") {
                 var pairs = params.getPairs;
-                ~voices[stream].do { |synth| if(synth.isRunning) { synth.set(*pairs) } };
+                ~voices[stream].do { |synth| synth.set(*pairs) };
                 ~applyEffects.(stream, params, "mutation");
             };
 
@@ -218,7 +218,6 @@ s.waitForBoot {
                     if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
 
                     synth = Synth(inst.asSymbol, params.getPairs ++ [\out, ~buses[stream].index], group, \addToHead);
-                    synth.register;
                     voices[note] = synth;
                     order.add(note);
 

@@ -37,19 +37,22 @@ SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
 }).add;
 
 // Sampler — buffers are normalised to stereo at load time (mono files get ch0 duplicated)
-// Params: buf, amp, pan, lag (ms), rate, start (0–1), loop, snap (cycles to fill), cps, ADSR (a, d, s, r, gate)
-SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, rate=1.0, start=0, loop=0,
+// Rate chain: snap (cycles to fill) sets base rate, n (midi, 60=1x) scales pitch, rate is final multiplier
+// Negative rate plays backwards. Without snap, just n * rate.
+SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0, begin=0, loop=0,
                       snap=0, cps=1, a=1, d=0, s=1.0, r=50, gate=1|
     var lagSec   = lag / 1000;
     var ampL     = VarLag.kr(amp, lagSec);
     var panL     = VarLag.kr(pan, lagSec);
+    var nL       = VarLag.kr(n, lagSec);
     var rateL    = VarLag.kr(rate, lagSec);
-    // snap>0: stretch/compress sample to fill (snap/cps) seconds
+    var nScale   = (nL - 60).midiratio;
     var snapRate = BufDur.kr(buf) * cps / snap.max(1e-4);
-    var finalRate = Select.kr(snap > 0, [rateL, snapRate]) * BufRateScale.kr(buf);
+    var baseRate = Select.kr(snap > 0, [1, snapRate]);
+    var finalRate = baseRate * nScale * rateL * BufRateScale.kr(buf);
     var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
     var sig      = PlayBuf.ar(2, buf, finalRate,
-                     startPos: start * BufFrames.kr(buf), loop: loop);
+                     startPos: begin * BufFrames.kr(buf), loop: loop);
     Out.ar(out, Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env));
 }).add;
 
