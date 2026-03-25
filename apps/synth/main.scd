@@ -22,6 +22,36 @@ s.waitForBoot {
     ~voices     = Dictionary.new; // stream -> Dictionary(note -> synth)
     ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
 
+    // Sample banks: bankName -> Array of Buffers (sorted by filename)
+    ~banks = Dictionary.new;
+
+    ~loadSamples = {
+        var configPath = thisProcess.nowExecutingPath.dirname +/+ "samples-config.scd";
+        var audioExts  = #["wav", "aif", "aiff", "flac", "mp3"];
+        if(File.exists(configPath)) {
+            load(configPath);
+            (~sampleDirs ?? []).do { |dir|
+                var expanded = dir.standardizePath;
+                if(File.exists(expanded)) {
+                    PathName(expanded).folders.do { |folder|
+                        var bankName = folder.folderName.asSymbol;
+                        var files = folder.files
+                            .select { |f| audioExts.includesEqual(f.extension.toLower) }
+                            .sort   { |a, b| a.fileName < b.fileName };
+                        if(files.size > 0) {
+                            ~banks[bankName] = files.collect { |f| Buffer.read(s, f.fullPath) };
+                            "Satori: loaded bank '%' (% samples)".format(bankName, files.size).postln;
+                        }
+                    }
+                } {
+                    "Satori: sample dir not found: %".format(dir).postln;
+                }
+            }
+        }
+    };
+
+    ~loadSamples.();
+
     // Known effects: key = param name, value = SynthDef name
     ~knownEffects = Dictionary.newFrom([
         \reverb, \satoriReverb,
@@ -149,6 +179,23 @@ s.waitForBoot {
             if(type == "event") {
                 var inst = params[\inst];
 
+                // Resolve inst:'sampler' + bank/i to the correct internal SynthDef
+                if(inst == "sampler") {
+                    var bank = params[\bank].asSymbol;
+                    var idx  = (params[\i] ?? 0).asInteger;
+                    var bufs = ~banks[bank];
+                    if(bufs.notNil && bufs.size > 0) {
+                        var buf = bufs[idx % bufs.size];
+                        params[\buf]  = buf.bufnum;
+                        params[\inst] = if(buf.numChannels == 1) { "samplerMono" } { "samplerStereo" };
+                        // use idx as the voice key so different samples don't steal each other
+                        if(params[\n].isNil) { params[\n] = idx };
+                        inst = params[\inst];
+                    } {
+                        "Satori: bank '%' not found or empty".format(bank).postln;
+                    }
+                };
+
                 if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
                 ~applyEffects.(stream, params);
 
@@ -179,5 +226,4 @@ s.waitForBoot {
 
     thisProcess.addOSCRecvFunc(~satoriHandler);
     "Satori: listening for OSC on port %".format(NetAddr.langPort).postln;
-
 };

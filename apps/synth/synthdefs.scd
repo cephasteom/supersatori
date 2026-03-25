@@ -36,6 +36,29 @@ SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
     Out.ar(out, Limiter.ar(In.ar(in, 2), level));
 }).add;
 
+// Mono sampler — plays a single-channel buffer, panned
+// Params: buf (buffer number), amp, pan, lag (ms), rate (1.0 = normal pitch), start (0–1), loop (0/1)
+SynthDef(\samplerMono, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, rate=1.0, start=0, loop=0|
+    var lagSec = lag / 1000;
+    var ampL   = VarLag.kr(amp, lagSec);
+    var panL   = VarLag.kr(pan, lagSec);
+    var rateL  = VarLag.kr(rate, lagSec);
+    var sig    = PlayBuf.ar(1, buf, rateL * BufRateScale.kr(buf),
+                     startPos: start * BufFrames.kr(buf), loop: loop, doneAction: Done.freeSelf);
+    Out.ar(out, Pan2.ar(sig * ampL, panL * 2 - 1));
+}).add;
+
+// Stereo sampler — plays a two-channel buffer with stereo pan/balance
+SynthDef(\samplerStereo, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, rate=1.0, start=0, loop=0|
+    var lagSec = lag / 1000;
+    var ampL   = VarLag.kr(amp, lagSec);
+    var panL   = VarLag.kr(pan, lagSec);
+    var rateL  = VarLag.kr(rate, lagSec);
+    var sig    = PlayBuf.ar(2, buf, rateL * BufRateScale.kr(buf),
+                     startPos: start * BufFrames.kr(buf), loop: loop, doneAction: Done.freeSelf);
+    Out.ar(out, Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL));
+}).add;
+
 // FM Synth
 // Params: note (midi), harm, modi, amp, pan, lag (ms), ADSR envelope (a, d, s, r, gate)
 SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
