@@ -18,25 +18,25 @@ s.waitForBoot {
     ~satoriClock = nil;
     ~clockCps    = nil;
 
-    // Satori sends events ~1 second before their intended play time.
-    // We anchor the clock so that beat cycleTime fires 1 second from now,
+    // Satori sends events ~.1 second before their intended play time.
+    // We anchor the clock so that beat cycleTime fires .1 second from now,
     // matching that lookahead. This de-jitters WebSocket timing variance.
     ~lookahead = 0.1; // seconds — match Satori's JS-side lookahead
 
     ~syncClock = { |cps, cycleTime|
+        var needsResync = false;
         if(~satoriClock.isNil) {
-            // beat cycleTime = thisThread.seconds + lookahead
+            needsResync = true;
+        } {
+            var expectedCycleTime = ~satoriClock.beats;
+            // Detect restart: cycleTime jumped backwards relative to where the clock thinks we are
+            if(cycleTime < (expectedCycleTime - 1)) { needsResync = true };
+            if(cps != ~clockCps) { needsResync = true };
+        };
+        if(needsResync) {
+            if(~satoriClock.notNil) { ~satoriClock.stop };
             ~satoriClock = TempoClock.new(cps, cycleTime, thisThread.seconds + ~lookahead);
             ~clockCps = cps;
-            "Satori: clock started (% cps, lookahead %)".format(cps, ~lookahead).postln;
-        } {
-            if(cps != ~clockCps) {
-                // Re-anchor for new cps, preserving the lookahead offset
-                ~satoriClock.stop;
-                ~satoriClock = TempoClock.new(cps, cycleTime, thisThread.seconds + ~lookahead);
-                ~clockCps = cps;
-                "Satori: clock updated to % cps".format(cps).postln;
-            }
         }
     };
 
