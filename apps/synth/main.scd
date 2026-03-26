@@ -267,26 +267,27 @@ s.waitForBoot {
             if(type == "event") {
                 var inst = params[\inst];
 
-                // Resolve inst:'sampler' + bank/i to a buffer
-                if(inst.asSymbol == \sampler) {
+                // Resolve inst:'sampler' or inst:'granular' + bank/i to a buffer
+                if([\sampler, \granular].includes(inst.asSymbol)) {
 
                     var bank = params[\bank].asSymbol;
                     var idx  = (params[\i] ?? 0).asInteger;
                     var bufs = ~banks[bank];
-                    
-                    if(bufs.notNil && bufs.size > 0) {
+
+                    if(bufs.notNil && { bufs.size > 0 }) {
                         var bufIdx = idx % bufs.size;
-                        var begin  = params[\begin] ?? 0;
-                        var stt    = params[\stt] ?? 0;
-                        
                         params[\buf] = bufs[bufIdx].bufnum;
 
-                        // snap begin to nearest zero crossing if specified
-                        if(begin.asBoolean && stt.asBoolean) {
-                            var markers = ~transients[bank] ?? [];
-                            if(markers.notNil && markers.size > 0) {
-                                params[\begin] = markers.minItem { |m| (m - begin).abs };
-                            }
+                        // snap begin to nearest zero crossing if specified (sampler only)
+                        if(inst.asSymbol == \sampler) {
+                            var begin = params[\begin] ?? 0;
+                            var stt   = params[\stt] ?? 0;
+                            if(begin.asBoolean && stt.asBoolean) {
+                                var markers = ~transients[bank] ?? [];
+                                if(markers.notNil && { markers.size > 0 }) {
+                                    params[\begin] = markers.minItem { |m| (m - begin).abs };
+                                }
+                            };
                         };
                     } {
                         "Satori: bank '%' not found or empty".format(bank).postln;

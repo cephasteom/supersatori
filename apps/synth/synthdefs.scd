@@ -56,17 +56,52 @@ SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0, beg
     Out.ar(out, Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env));
 }).add;
 
+// Granular Synth — uses Warp1 which reads stereo buffers directly (no duplicate mono buffers needed)
+// begin: start beginition for the scan (0-1)
+// snap: cycles to traverse the full buffer (0 = static beginition at begin)
+// rate: multiplies scan speed
+// n: pitch within grains (midi, 60 = original pitch), independent of scan speed
+// beginrand: per-grain beginition scatter (0-1), overlaps: simultaneous grains
+// gdur: grain duration (ms)
+SynthDef(\granular, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0,
+                       snap=0, cps=1,
+                       begin=0, beginrand=0.0,
+                       gdur=100, overlaps=8,
+                       a=10, d=100, s=1.0, r=300, gate=1|
+    var lagSec      = lag / 1000;
+    var ampL        = VarLag.kr(amp, lagSec);
+    var panL        = VarLag.kr(pan, lagSec);
+    var nL          = VarLag.kr(n, lagSec);
+    var rateL       = VarLag.kr(rate, lagSec);
+    var beginL        = VarLag.kr(begin, lagSec);
+    var nScale      = (nL - 60).midiratio;
+    // Phasor scans from begin to 1.0 in snap cycles, rate multiplies speed
+    var pointerRate = cps * rateL / snap.max(1e-4) / ControlRate.ir;
+    var movingPtr   = Phasor.kr(0, pointerRate, beginL, 1.0, beginL);
+    var pointer     = Select.kr(snap > 0, [beginL, movingPtr]);
+    var gdurSec     = gdur / 1000;
+    var sig         = Warp1.ar(2, buf, pointer, nScale, gdurSec, -1, overlaps, beginrand, 2);
+    var env         = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    Out.ar(out, Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env));
+}).add;
+
 // FM Synth
 // Params: note (midi), harm, modi, amp, pan, lag (ms), ADSR envelope (a, d, s, r, gate)
+// Modulator envelope (moda, modd, mods, modr) scales the mod index over time
+// Keyscaling: both mod index and amp scale by 2^(-0.5) per octave above middle C
 SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
-                 a=10, d=100, s=0.7, r=300, gate=1|
-    var lagSec = lag / 1000;
-    var freq   = VarLag.kr(n, lagSec).midicps;
-    var modIdx = VarLag.kr(modi, lagSec);
-    var ampL   = VarLag.kr(amp, lagSec);
-    var panL   = VarLag.kr(pan, lagSec);
-    var mod    = SinOsc.ar(freq * harm, 0, freq * modIdx);
-    var car    = SinOsc.ar(freq + mod);
-    var env    = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+                 a=10, d=100, s=0.7, r=300, gate=1,
+                 moda=0, modd=100, mods=1.0, modr=500|
+    var lagSec   = lag / 1000;
+    var nL       = VarLag.kr(n, lagSec);
+    var freq     = nL.midicps;
+    var ks       = (nL - 60) / 12;            // octaves above/below middle C
+    var modIdx   = VarLag.kr(modi, lagSec) * (2 ** (ks * -0.5));
+    var ampL     = VarLag.kr(amp, lagSec) * (2 ** (ks * -0.5));
+    var panL     = VarLag.kr(pan, lagSec);
+    var modEnv   = EnvGen.kr(Env.adsr(moda / 1000, modd / 1000, mods, modr / 1000), gate);
+    var mod      = SinOsc.ar(freq * harm, 0, freq * modIdx * modEnv);
+    var car      = SinOsc.ar(freq + mod);
+    var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
     Out.ar(out, Pan2.ar(car * env * ampL * 0.5, panL * 2 - 1));
 }).add;
