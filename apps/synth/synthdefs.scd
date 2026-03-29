@@ -31,6 +31,40 @@ SynthDef(\satoriChorus, { |in=0, wet=0.5, rate=0.5, depth=5, lag=0|
     ReplaceOut.ar(in, XFade2.ar(sig, chorus, wetL * 2 - 1));
 }).add;
 
+// Bitcrusher — bits: bit depth (1-16), rate: sample rate as fraction of full rate (0-1)
+SynthDef(\satoriBitcrusher, { |in=0, wet=0.5, bits=5, rate=0.5, lag=0|
+    var lagSec  = lag / 1000;
+    var wetL    = VarLag.kr(wet, lagSec);
+    var bitsL   = VarLag.kr(bits, lagSec).round(1).max(1);
+    var rateL   = VarLag.kr(rate, lagSec).clip(0.001, 1.0);
+    var sig     = In.ar(in, 2);
+    var crushed = Latch.ar(sig, Impulse.ar(SampleRate.ir * rateL));
+    var step    = 2 ** (1 - bitsL);
+    crushed     = (crushed / step).round * step;
+    ReplaceOut.ar(in, XFade2.ar(sig, crushed, wetL * 2 - 1));
+}).add;
+
+// Overdrive — drive: 0-1, maps exponentially to internal gain 1-50
+// Uses tanh for smooth soft clipping; output is normalised so unity gain at any drive level
+SynthDef(\satoriOverdrive, { |in=0, wet=0.5, drive=0.5, lag=0|
+    var lagSec = lag / 1000;
+    var wetL   = VarLag.kr(wet, lagSec);
+    var driveL = VarLag.kr(drive, lagSec).linexp(0, 1, 1, 50);
+    var sig    = In.ar(in, 2);
+    var driven = tanh(sig * driveL) / tanh(driveL);
+    ReplaceOut.ar(in, XFade2.ar(sig, driven, wetL * 2 - 1));
+}).add;
+
+// Wavefolder — gain: 0-1, maps exponentially to internal gain 1-8
+SynthDef(\satoriFolder, { |in=0, wet=0.5, gain=0.5, lag=0|
+    var lagSec = lag / 1000;
+    var wetL   = VarLag.kr(wet, lagSec);
+    var gainL  = VarLag.kr(gain, lagSec).linexp(0, 1, 1, 8);
+    var sig    = In.ar(in, 2);
+    var folded = (sig * gainL).fold2(1);
+    ReplaceOut.ar(in, XFade2.ar(sig, folded, wetL * 2 - 1));
+}).add;
+
 // Per-stream limiter — sits at the tail of each group's private bus
 SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
     Out.ar(out, Limiter.ar(In.ar(in, 2), level));

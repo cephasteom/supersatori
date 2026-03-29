@@ -135,7 +135,10 @@ s.waitForBoot {
     ~knownEffects = Dictionary.newFrom([
         \reverb, \satoriReverb,
         \delay,  \satoriDelay,
-        \chorus, \satoriChorus
+        \chorus, \satoriChorus,
+        \crush,  \satoriBitcrusher,
+        \dist,   \satoriOverdrive,
+        \fold,   \satoriFolder
     ]);
 
     ~getGroup = { |stream|
