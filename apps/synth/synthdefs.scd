@@ -70,6 +70,13 @@ SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
     Out.ar(out, Limiter.ar(In.ar(in, 2), level));
 }).add;
 
+// FX send — reads from a source stream bus and additively writes to an fx stream bus
+SynthDef(\satoriSend, { |in=0, out=0, wet=0, lag=0|
+    var lagSec = lag / 1000;
+    var wetL   = VarLag.kr(wet, lagSec);
+    Out.ar(out, In.ar(in, 2) * wetL);
+}).add;
+
 // Sampler — buffers are normalised to stereo at load time (mono files get ch0 duplicated)
 // Rate chain: snap (cycles to fill) sets base rate, n (midi, 60=1x) scales pitch, rate is final multiplier
 // Negative rate plays backwards. Without snap, just n * rate.

@@ -47,6 +47,10 @@ s.waitForBoot {
     ~effects    = Dictionary.new; // stream -> Dictionary(effectName -> Synth)
     ~voices     = Dictionary.new; // stream -> Dictionary(note -> synth)
     ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
+    ~fxSends    = Dictionary.new; // sourceStream -> Dictionary(fxStreamName -> sendSynth)
+
+    // Container group that always runs after all source stream groups; fx groups live inside it
+    ~fxContainer = Group.new(s, \addToTail);
 
     // Sample banks: bankName -> Array of Buffers (sorted by filename)
     ~banks = Dictionary.new;
@@ -141,10 +145,22 @@ s.waitForBoot {
         \fold,   \satoriFolder
     ]);
 
+    // Returns true for fx stream names: "fx" followed by one or more digits (e.g. fx0, fx1)
+    ~isFxStream = { |stream|
+        var str = stream.asString;
+        str.beginsWith("fx") && { str.size > 2 } && { str.copyToEnd(2).every { |c| c.isDecDigit } }
+    };
+
     ~getGroup = { |stream|
         ~groups[stream] ?? {
             var bus     = Bus.audio(s, 2);
-            var group   = Group.new(s);
+            // fx stream groups live inside ~fxContainer (after all source groups);
+            // source stream groups are inserted before ~fxContainer so they always run first
+            var group   = if(~isFxStream.(stream)) {
+                Group.new(~fxContainer, \addToTail)
+            } {
+                Group.new(~fxContainer, \addBefore)
+            };
             var limiter = Synth.new(\satoriLimiter, [\in, bus.index, \out, 0], group, \addToTail);
             ~buses[stream]   = bus;
             ~limiters[stream] = limiter;
@@ -201,6 +217,37 @@ s.waitForBoot {
                 };
             }
         }
+    };
+
+    // Create or update send synths from sourceStream to any fx streams named in params.
+    // For events: mute sends to fx streams not present in params.
+    ~updateSends = { |sourceStream, params, type="event"|
+        var sends = ~fxSends[sourceStream] ?? {
+            ~fxSends[sourceStream] = Dictionary.new;
+            ~fxSends[sourceStream]
+        };
+        var fxKeys = Set.new;
+        params.keysValuesDo { |key, val|
+            var k = key.asString;
+            if(~isFxStream.(k)) {
+                fxKeys.add(k);
+                ~getGroup.(k); // ensure fx group/bus exists
+                if(sends[k].isNil) {
+                    sends[k] = Synth.new(\satoriSend, [
+                        \in,  ~buses[sourceStream].index,
+                        \out, ~buses[k].index,
+                        \wet, val.asFloat
+                    ], ~limiters[sourceStream], \addAfter);
+                } {
+                    sends[k].set(\wet, val.asFloat);
+                }
+            }
+        };
+        if(type == "event") {
+            sends.keysValuesDo { |fxStream, synth|
+                if(fxKeys.includes(fxStream).not) { synth.set(\wet, 0) }
+            }
+        };
     };
 
     ~getVoices = { |stream|
@@ -265,6 +312,7 @@ s.waitForBoot {
                 var pairs = params.getPairs;
                 ~voices[stream].do { |synth| synth.set(*pairs) };
                 ~applyEffects.(stream, params, "mutation");
+                if(~isFxStream.(stream).not) { ~updateSends.(stream, params, "mutation") };
             };
 
             if(type == "event") {
@@ -299,8 +347,9 @@ s.waitForBoot {
 
                 if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
                 ~applyEffects.(stream, params);
+                if(~isFxStream.(stream).not) { ~updateSends.(stream, params) };
 
-                if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
+                if(~isFxStream.(stream).not && inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
                     var dur    = (params[\dur] ?? 250) / 1000;
                     var note   = params[\n] ?? 60;
                     var voices = ~getVoices.(stream);
@@ -321,7 +370,7 @@ s.waitForBoot {
                         nil
                     });
                 } {
-                    "Satori: no SynthDef found for inst '%'".format(inst).postln;
+                    if(inst.notNil) { "Satori: no SynthDef found for inst '%'".format(inst).postln };
                 };
             };
 
