@@ -1,3 +1,8 @@
+// Load config before boot so device and output channel settings apply to s.options
+(thisProcess.nowExecutingPath.dirname +/+ "config.scd").load;
+if(~device.notNil) { s.options.device = ~device };
+s.options.numOutputBusChannels = ~numOutputs ?? 2;
+
 s.waitForBoot {
     var customPath = thisProcess.nowExecutingPath.dirname +/+ "custom-synthdefs.scd";
 
@@ -58,11 +63,8 @@ s.waitForBoot {
     ~transients = Dictionary.new;
 
     ~loadSamples = {
-        var configPath = thisProcess.nowExecutingPath.dirname +/+ "samples-config.scd";
-        var audioExts  = #["wav", "aif", "aiff", "flac", "mp3"];
-        if(File.exists(configPath)) {
-            load(configPath);
-            (~sampleDirs ?? []).do { |dir|
+        var audioExts = #["wav", "aif", "aiff", "flac", "mp3"];
+        (~sampleDirs ?? []).do { |dir|
                 var expanded = dir.standardizePath;
                 if(File.exists(expanded)) {
                     PathName(expanded).folders.do { |folder|
@@ -130,7 +132,6 @@ s.waitForBoot {
                     "Satori: sample dir not found: %".format(dir).postln;
                 }
             }
-        }
     };
 
     ~loadSamples.();
@@ -299,6 +300,8 @@ s.waitForBoot {
             var params    = ~parseParams.(msg[1..]);
             var cycleTime = (params[\time] ?? 0).asFloat;
             var cps       = (params[\cps]  ?? 0.5).asFloat;
+            var streamOut = params.removeAt(\out); // routing: handled via limiter, not forwarded to synths
+            
             params.removeAt(\time); // don't forward scheduling metadata to synths
 
             // Ensure group/bus infrastructure exists immediately (before scheduling)
@@ -307,6 +310,10 @@ s.waitForBoot {
             ~syncClock.(cps, cycleTime);
 
             ~satoriClock.schedAbs(cycleTime, {
+            
+            if(streamOut.notNil) {
+                ~limiters[stream].set(\out, streamOut.asInteger % ~numOutputs);
+            };
 
             if(type == "mutation") {
                 var pairs = params.getPairs;
