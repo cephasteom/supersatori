@@ -144,6 +144,103 @@ SynthDef(\granular, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0,
     Out.ar(out, sig);
 }).add;
 
+// Subtractive Synth
+// wave: 0=saw, 1=pulse; pw: pulse width (0-1, only used when wave=1)
+// ffreq: base filter cutoff (Hz), fres: resonance (0=none, 1=max), fenv: Hz added to cutoff at envelope peak
+// Filter tracks amp envelope shape. Post-process filters (lpf/hpf/bpf/res) work as on other synths.
+SynthDef(\subtractive, { |out=0, n=60, wave=0, pw=0.5, amp=0.5, pan=0.5, lag=0,
+                          a=10, d=200, s=0.5, r=300, gate=1,
+                          ffreq=2000, fres=0.3, fenv=0,
+                          lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec  = lag / 1000;
+    var nL      = VarLag.kr(n, lagSec);
+    var freq    = nL.midicps;
+    var ampL    = VarLag.kr(amp, lagSec);
+    var panL    = VarLag.kr(pan, lagSec);
+    var pwL     = VarLag.kr(pw, lagSec);
+    var ffreqL  = VarLag.kr(ffreq, lagSec);
+    var fresL   = VarLag.kr(fres, lagSec);
+    var fenvL   = VarLag.kr(fenv, lagSec);
+    var env     = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    var osc     = Select.ar(wave.round(1), [Saw.ar(freq), Pulse.ar(freq, pwL)]);
+    var cutoff  = (ffreqL + (fenvL * env)).clip(20, 20000);
+    var rq      = 1 - (fresL * 0.99);           // rq=1 no resonance, rq=0.01 max resonance
+    var filtered = RLPF.ar(osc, cutoff, rq);
+    var lpfL    = VarLag.kr(lpf, lagSec);
+    var hpfL    = VarLag.kr(hpf, lagSec);
+    var bpfL    = VarLag.kr(bpf, lagSec);
+    var resL    = VarLag.kr(res, lagSec);
+    var sig     = Pan2.ar(filtered * env * ampL * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
+// Karplus-Strong plucked string
+// Exciter is a noise burst triggered once at synth creation; pitch set by delay line (1/freq).
+// decay: ring time (ms); coef: loop filter coefficient (0=bright, 1=dull/mellow)
+// No d/s params — the physical decay is the envelope. Gate/release allow early cutoff.
+SynthDef(\karplus, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+                      decay=1000, coef=0.5,
+                      a=1, r=50, gate=1,
+                      lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec  = lag / 1000;
+    var nL      = VarLag.kr(n, lagSec);
+    var freq    = nL.midicps;
+    var ampL    = VarLag.kr(amp, lagSec);
+    var panL    = VarLag.kr(pan, lagSec);
+    var decayL  = VarLag.kr(decay, lagSec);
+    var coefL   = VarLag.kr(coef, lagSec);
+    var env     = EnvGen.kr(Env.asr(a / 1000, 1.0, r / 1000), gate, doneAction: Done.freeSelf);
+    var exciter = WhiteNoise.ar(1);
+    var plucked = Pluck.ar(exciter, Impulse.kr(0), 0.05, freq.reciprocal, decayL / 1000, coefL);
+    var lpfL    = VarLag.kr(lpf, lagSec);
+    var hpfL    = VarLag.kr(hpf, lagSec);
+    var bpfL    = VarLag.kr(bpf, lagSec);
+    var resL    = VarLag.kr(res, lagSec);
+    var sig     = Pan2.ar(plucked * env * ampL * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
+// Pad — 7 detuned saws spread symmetrically across the stereo field (supersaw style)
+// detune: total spread in cents across all voices; drift: per-voice slow random Hz offset
+// Slow attack default (a=500). No d/s defaults encourage open sustain.
+SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+                  detune=30, drift=0.5,
+                  a=500, d=0, s=1.0, r=800, gate=1,
+                  lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var detuneL   = VarLag.kr(detune, lagSec);
+    var driftL    = VarLag.kr(drift, lagSec);
+    var numVoices = 7;
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    var voices    = numVoices.collect { |i|
+        var pos         = i / (numVoices - 1) * 2 - 1;           // -1 to 1
+        var detuneCents = pos * (detuneL / 2);                    // ±detune/2 cents each side
+        var driftHz     = LFNoise1.kr(rrand(0.1, 0.5)) * driftL; // independent per-voice, rate fixed at build time
+        var voiceFreq   = freq * (detuneCents / 100).midiratio + driftHz;
+        Pan2.ar(Saw.ar(voiceFreq), pos)
+    };
+    var sig       = Mix(voices) / numVoices;
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env * 0.5);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // FM Synth
 // Params: note (midi), harm, modi, amp, pan, lag (ms), ADSR envelope (a, d, s, r, gate)
 // Modulator envelope (moda, modd, mods, modr) scales the mod index over time
