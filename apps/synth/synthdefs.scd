@@ -241,6 +241,42 @@ SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     Out.ar(out, sig);
 }).add;
 
+// Acid (TB-303 style)
+// wave: 0=saw, 1=square. Filter auto-sweeps on every gate: opens to ffreq+fenv*(1+accent), decays over fdec ms.
+// fenv: sweep amount in Hz — set to 0 for a static filter; accent: 0-1 boosts sweep and amp.
+// Slide: use lag (ms) on n for portamento. Uses MoogFF ladder filter for authentic resonance.
+SynthDef(\acid, { |out=0, n=60, wave=0, amp=0.5, pan=0.5, lag=0,
+                   a=1, d=0, s=1.0, r=50, gate=1,
+                   ffreq=300, fres=0.7, fenv=3000, fdec=300,
+                   accent=0,
+                   lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var ffreqL    = VarLag.kr(ffreq, lagSec);
+    var fresL     = VarLag.kr(fres, lagSec);
+    var fenvL     = VarLag.kr(fenv, lagSec);
+    var fdecL     = VarLag.kr(fdec, lagSec);
+    var accentL   = VarLag.kr(accent, lagSec);
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    var trig      = Trig1.kr(gate, 0.001);
+    var filterEnv = Decay2.kr(trig, 0.001, fdecL / 1000);       // 0→1→0, decays over fdec ms
+    var osc       = Select.ar(wave.round(1), [Saw.ar(freq), Pulse.ar(freq, 0.5)]);
+    var cutoff    = (ffreqL + (fenvL * (1 + accentL) * filterEnv)).clip(20, 20000);
+    var filtered  = MoogFF.ar(osc, cutoff, fresL * 4);           // gain 0-4; 4 = self-oscillation
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    var sig       = Pan2.ar(filtered * env * ampL * (1 + accentL) * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // FM Synth
 // Params: note (midi), harm, modi, amp, pan, lag (ms), ADSR envelope (a, d, s, r, gate)
 // Modulator envelope (moda, modd, mods, modr) scales the mod index over time
