@@ -144,6 +144,53 @@ SynthDef(\granular, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0,
     Out.ar(out, sig);
 }).add;
 
+// Sub Synth
+// Sine basis. presence: distorts a parallel copy and HPFs out the fundamental from it,
+//   so only upper harmonics are added — the sine itself stays pure.
+// lfoRate/lfoDepth: amplitude tremolo whose phase resets on each note trigger (starts at full amp).
+// sweep: 2-octave pitch sweep on trigger — 1=falls from 2 octaves above, -1=rises from below, 0=off.
+// sweepdec: sweep decay time (ms).
+SynthDef(\sub, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+                  a=1, d=0, s=1.0, r=50, gate=1,
+                  presence=0.3, lforate=4.0, lfodepth=0.3,
+                  sweep=0.0, sweepdec=200,
+                  lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var presenceL = VarLag.kr(presence, lagSec);
+    var lfoRateL  = VarLag.kr(lforate, lagSec);
+    var lfoDepthL = VarLag.kr(lfodepth, lagSec);
+    var sweepL    = VarLag.kr(sweep, lagSec);
+    var sweepdecL = VarLag.kr(sweepdec, lagSec);
+    var trig      = Trig1.kr(gate, 0.001);
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    // Pitch sweep: 4^(sweep * decay) — 2 octaves up (sweep=1) or down (sweep=-1)
+    var sweepEnv  = Decay2.kr(trig, 0.001, sweepdecL / 1000);
+    var pitchFreq = freq * (4 ** (sweepL * sweepEnv));
+    // Pure sine sub
+    var sub       = SinOsc.ar(pitchFreq);
+    // Presence: tanh-distort a copy, HPF to remove the fundamental, mix in at low level
+    var distorted = tanh(sub * (presenceL * 8 + 1));
+    var harmonics = HPF.ar(distorted, pitchFreq * 1.5) * presenceL;
+    var sig       = sub + harmonics;
+    // Amp LFO: phase resets to peak on each trigger so note always starts at full amplitude
+    var lfoPhase  = Phasor.kr(trig, lfoRateL / ControlRate.ir, 0, 1, 0.25);
+    var lfo       = sin(lfoPhase * 2pi);
+    var ampMod    = 1 - (lfoDepthL * (1 - (lfo * 0.5 + 0.5)));
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    sig = Pan2.ar(sig * env * ampL * ampMod * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // Subtractive Synth
 // wave: 0=saw, 1=pulse; pw: pulse width (0-1, only used when wave=1)
 // ffreq: base filter cutoff (Hz), fres: resonance (0=none, 1=max), fenv: Hz added to cutoff at envelope peak
