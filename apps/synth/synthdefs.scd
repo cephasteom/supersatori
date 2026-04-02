@@ -277,6 +277,42 @@ SynthDef(\acid, { |out=0, n=60, wave=0, amp=0.5, pan=0.5, lag=0,
     Out.ar(out, sig);
 }).add;
 
+// Additive Lazer
+// 8 sine partials at harmonic ratios. Pitch sweeps exponentially from freq*psweep down to freq over pdec ms.
+// psweep: multiplier at note start (2.0=octave above, 1.0=no sweep); pdec: sweep decay (ms)
+// rolloff: amplitude weight per partial as rolloff^i — 0.0=only fundamental, 1.0=all partials equal
+// Percussive by default (s=0); sustain-capable if s raised. CPU cost: ~8 SinOscs, minimal.
+SynthDef(\lazer, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+                        a=1, d=300, s=0.0, r=80, gate=1,
+                        psweep=2.0, pdec=80,
+                        rolloff=0.6,
+                        lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var psweepL   = VarLag.kr(psweep, lagSec);
+    var pdecL     = VarLag.kr(pdec, lagSec);
+    var rolloffL  = VarLag.kr(rolloff, lagSec);
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    var trig      = Trig1.kr(gate, 0.001);
+    var pitchEnv  = Decay2.kr(trig, 0.001, pdecL / 1000);
+    var sweepFreq = freq * (psweepL ** pitchEnv);    // exponential: psweep at attack, 1x at rest
+    var sig       = Mix.fill(8, { |i|
+        SinOsc.ar(sweepFreq * (i + 1)) * (rolloffL ** i)
+    }) / 8;                                          // /8 normalises for rolloff=1 (all equal)
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    sig = Pan2.ar(sig * env * ampL * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // FM Synth
 // Params: note (midi), harm, modi, amp, pan, lag (ms), ADSR envelope (a, d, s, r, gate)
 // Modulator envelope (moda, modd, mods, modr) scales the mod index over time
