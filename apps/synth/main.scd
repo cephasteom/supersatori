@@ -330,6 +330,20 @@ s.waitForBoot {
         };
     };
 
+    // Expand params for a chord. Array params (comma-separated strings) are cycled per voice;
+    // scalar params are copied to every voice. n is set per-voice from the notes array.
+    ~expandChord = { |params, notes|
+        notes.collect { |note, i|
+            var d = Dictionary.new;
+            params.keysValuesDo { |k, v|
+                var parts = v.asString.split($,);
+            d[k] = if(parts.size > 1) { parts.wrapAt(i).asFloat } { v };
+            };
+            d[\n] = note;
+            d
+        }
+    };
+
     // Route all /satori/* messages
     ~satoriHandler = { |msg, time, replyAddr, recvPort|
         var path = msg[0].asString;
@@ -398,25 +412,30 @@ s.waitForBoot {
                 if(~isFxStream.(stream).not) { ~updateSends.(stream, params) };
 
                 if(~isFxStream.(stream).not && inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
-                    var dur    = (params[\dur] ?? 250) / 1000;
-                    var note   = params[\n] ?? 60;
-                    var voices = ~getVoices.(stream);
-                    var order  = ~voiceOrder[stream];
-                    var synth;
+                    var notes    = (params[\n] ?? 60).asString.split($,).collect(_.asFloat);
+                    var voices   = ~getVoices.(stream);
+                    var order    = ~voiceOrder[stream];
+                    var expanded = ~expandChord.(params, notes);
 
-                    ~releaseVoice.(stream, note);
-                    if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
+                    expanded.do { |vParams|
+                        var note  = vParams[\n];
+                        var dur   = (vParams[\dur] ?? 250).asFloat / 1000;
+                        var synth;
 
-                    synth = Synth(inst.asSymbol, params.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
-                    voices[note] = synth;
-                    order.add(note);
+                        ~releaseVoice.(stream, note);
+                        if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
 
-                    SystemClock.sched(dur, {
-                        if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
-                            ~releaseVoice.(stream, note)
-                        };
-                        nil
-                    });
+                        synth = Synth(inst.asSymbol, vParams.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
+                        voices[note] = synth;
+                        order.add(note);
+
+                        SystemClock.sched(dur, {
+                            if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
+                                ~releaseVoice.(stream, note)
+                            };
+                            nil
+                        });
+                    };
                 } {
                     if(inst.notNil) { "Satori: no SynthDef found for inst '%'".format(inst).postln };
                 };
