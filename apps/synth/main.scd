@@ -5,12 +5,53 @@ s.options.numOutputBusChannels = ~numOutputs ?? 2;
 
 s.waitForBoot {
     var customPath = thisProcess.nowExecutingPath.dirname +/+ "custom-synthdefs.scd";
+    var priorKeys  = SynthDescLib.global.synthDescs.keys.as(Set);
 
     // load core synthdefs
     load(thisProcess.nowExecutingPath.dirname +/+ "synthdefs.scd");
 
     // load user-defined SynthDefs if present
     if(File.exists(customPath)) { load(customPath) };
+
+    // Collect newly added instrument synthdefs (excludes satori* fx/utility defs),
+    // build a JSON payload and send to bridge on port 57200.
+    // ADSR args are collapsed into a single "adsr" array; gate/out/in are omitted.
+    {
+        var skipArgs = #[\out, \in, \gate];
+        var adsrArgs = #[\a, \d, \s, \r];
+        var newKeys  = SynthDescLib.global.synthDescs.keys.as(Set) - priorKeys;
+        var instrs   = newKeys.reject { |k| k.asString.beginsWith("satori") }.asArray.sort;
+        var fmtVal   = { |v|
+            var r = v.round(0.0001);
+            if(r == r.trunc) { r.asInteger.asString } { r.asString }
+        };
+        var entries  = instrs.collect { |name|
+            var desc    = SynthDescLib.global.at(name);
+            var args    = [];
+            var adsr    = [0.0, 0.0, 1.0, 50.0];
+            var hasADSR = false;
+            desc.controls.do { |ctrl|
+                var n = ctrl.name.asSymbol;
+                if(skipArgs.includes(n).not) {
+                    if(adsrArgs.includes(n)) {
+                        adsr[adsrArgs.indexOf(n)] = ctrl.defaultValue;
+                        hasADSR = true;
+                    } {
+                        args = args.add("\"" ++ n ++ "\":" ++ fmtVal.(ctrl.defaultValue));
+                    }
+                }
+            };
+            if(hasADSR) {
+                args = args.add("\"adsr\":[" ++ adsr.collect { |dv| fmtVal.(dv) }.join(",") ++ "]");
+            };
+            "\"" ++ name ++ "\":{" ++ args.join(",") ++ "}"
+        };
+        ~synthdefsJSON = "{\"type\":\"synthdefs\",\"synthdefs\":{" ++ entries.join(",") ++ "}}";
+        File.open(thisProcess.nowExecutingPath.dirname +/+ "synthdefs.json", "w")
+            .write(~synthdefsJSON)
+            .close;
+        "Satori: wrote % instrument synthdef(s) to synthdefs.json".format(instrs.size).postln;
+    }.();
 
     // Parse OSC args into a dictionary, e.g. ["/satori/s0/event", "inst", "fm", "n", 60] -> {inst: "fm", n: 60}
     ~parseParams = { |args|

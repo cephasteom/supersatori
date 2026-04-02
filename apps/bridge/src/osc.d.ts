@@ -1,7 +1,7 @@
 declare module 'osc' {
   interface UDPPortOptions {
-    remoteAddress: string
-    remotePort: number
+    remoteAddress?: string
+    remotePort?: number
     localAddress?: string
     localPort?: number
   }
@@ -20,6 +20,7 @@ declare module 'osc' {
     constructor(options: UDPPortOptions)
     open(): void
     send(message: OscMessage): void
+    on(event: 'message', callback: (message: OscMessage) => void): void
   }
 
   export default { UDPPort }

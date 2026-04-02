@@ -1,11 +1,13 @@
 import WebSocket, { WebSocketServer } from 'ws'
 import osc from 'osc'
+import fs from 'fs'
+import path from 'path'
 
 declare type Event = {
-  id: string, 
-  params: Record<string, any>, 
+  id: string,
+  params: Record<string, any>,
   time: number, // in cycles, e.g. 1, 2.25, 3.065 etc.
-  type: string, 
+  type: string,
   cps: number
 };
 
@@ -17,12 +19,14 @@ interface OscArg {
 type JsonPrimitive = string | number | boolean | null
 type JsonValue = JsonPrimitive | JsonValue[]
 
-const udpPort = new osc.UDPPort({
+const oscOut = new osc.UDPPort({
   remoteAddress: '127.0.0.1',
   remotePort: 57120
 })
 
-udpPort.open()
+oscOut.open()
+
+const synthdefsPath = path.resolve(__dirname, '../../synth/synthdefs.json')
 
 const wss = new WebSocketServer({ port: 8080 })
 
@@ -42,6 +46,12 @@ const typeMap: Record<string, string> = {
 }
 
 wss.on('connection', ws => {
+  try {
+    ws.send(fs.readFileSync(synthdefsPath, 'utf8'))
+  } catch {
+    // synthdefs.json not yet written — SC may still be booting
+  }
+
   ws.on('message', raw => {
     const msg = JSON.parse(raw.toString()) as Event
     const msgType = typeMap[msg.type] ?? 'event'
@@ -57,6 +67,6 @@ wss.on('connection', ws => {
       })
     ]
 
-    udpPort.send({ address, args })
+    oscOut.send({ address, args })
   })
 })
