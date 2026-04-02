@@ -186,6 +186,50 @@ SynthDef(\kick, { |out=0, n=36, amp=0.8, pan=0.5, lag=0,
     Out.ar(out, sig);
 }).add;
 
+// Snare Synth
+// Two layers: body (two inharmonic sines with pitch sweep) and snare noise (HPF white noise).
+// body: tonal layer level; snap: wire noise level; tight: wire noise decay (ms).
+// fstart/pdec: pitch sweep start (Hz) and decay (ms). drive: tanh saturation on body tones.
+// Each layer has its own Decay2 envelope so body and wire decay independently.
+SynthDef(\snare, { |out=0, n=48, amp=0.8, pan=0.5, lag=0,
+                    a=2, d=150, s=0.0, r=30, gate=1,
+                    fstart=250, pdec=30,
+                    snap=0.8, body=0.7, drive=0.0, tight=120,
+                    lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var fstartL   = VarLag.kr(fstart, lagSec);
+    var pdecL     = VarLag.kr(pdec, lagSec);
+    var snapL     = VarLag.kr(snap, lagSec);
+    var bodyL     = VarLag.kr(body, lagSec);
+    var driveL    = VarLag.kr(drive, lagSec);
+    var tightL    = VarLag.kr(tight, lagSec);
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    var atrig     = Impulse.ar(0);
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    // Body: two inharmonic sines (drum head modes) with shared pitch sweep
+    var pitchEnv  = Decay2.ar(atrig, 0.001, pdecL / 1000);
+    var sweepFreq = freq + (pitchEnv * (fstartL - freq));
+    var driveGain = 1 + driveL * 9;
+    var tone1     = SinOsc.ar(sweepFreq);
+    var tone2     = SinOsc.ar(sweepFreq * 1.6);
+    var bodyEnv   = Decay2.ar(atrig, 0.001, d / 1000);
+    var bodySig   = tanh((tone1 + (tone2 * 0.6)) * driveGain) / tanh(driveGain) * bodyEnv * bodyL;
+    // Snare noise: HPF white noise for wire rattle, independently decaying
+    var snareNoise = HPF.ar(WhiteNoise.ar, 1500) * Decay2.ar(atrig, 0.001, tightL / 1000) * snapL;
+    var sig       = Pan2.ar((bodySig + snareNoise) * env * ampL * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // Sub Synth
 // Sine basis. presence: distorts a parallel copy and HPFs out the fundamental from it,
 //   so only upper harmonics are added — the sine itself stays pure.
