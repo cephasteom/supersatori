@@ -144,6 +144,48 @@ SynthDef(\granular, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0,
     Out.ar(out, sig);
 }).add;
 
+// Kick Synth
+// Three layers: tone (sine + pitch sweep), click (bandpass noise transient), noise (lpf noise tail).
+// fstart: initial sweep frequency (Hz); pdec: pitch decay (ms).
+// click: beater transient level; noise: noise body level; drive: tanh saturation on tone only.
+// Percussive by default (s=0). Each synth creation fires its own Impulse for internal envelopes.
+SynthDef(\kick, { |out=0, n=36, amp=0.8, pan=0.5, lag=0,
+                   a=2, d=400, s=0.0, r=50, gate=1,
+                   fstart=180, pdec=60,
+                   click=0.5, noise=0.0, drive=0.0,
+                   lpf=0, hpf=0, bpf=0, res=1.0|
+    var lagSec    = lag / 1000;
+    var nL        = VarLag.kr(n, lagSec);
+    var freq      = nL.midicps;
+    var ampL      = VarLag.kr(amp, lagSec);
+    var panL      = VarLag.kr(pan, lagSec);
+    var fstartL   = VarLag.kr(fstart, lagSec);
+    var pdecL     = VarLag.kr(pdec, lagSec);
+    var clickL    = VarLag.kr(click, lagSec);
+    var noiseL    = VarLag.kr(noise, lagSec);
+    var driveL    = VarLag.kr(drive, lagSec);
+    var atrig     = Impulse.ar(0);                                   // one-shot at synth creation
+    var env       = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    // Tone: sine with exponential pitch sweep from fstart down to freq
+    var pitchEnv  = Decay2.ar(atrig, 0.001, pdecL / 1000);
+    var sweepFreq = freq + (pitchEnv * (fstartL - freq));
+    var driveGain = 1 + driveL * 9;                                  // 1x–10x
+    var tone      = tanh(SinOsc.ar(sweepFreq) * driveGain) / tanh(driveGain);
+    // Click: bandpass noise, ~8ms decay — the physical beater transient
+    var clickSig  = BPF.ar(WhiteNoise.ar, 2500, 0.7) * Decay2.ar(atrig, 0.001, 0.008) * clickL;
+    // Noise: lowpass body, decays at half the main envelope time
+    var noiseSig  = LPF.ar(WhiteNoise.ar, 250) * Decay2.ar(atrig, 0.001, d / 2000) * noiseL;
+    var lpfL      = VarLag.kr(lpf, lagSec);
+    var hpfL      = VarLag.kr(hpf, lagSec);
+    var bpfL      = VarLag.kr(bpf, lagSec);
+    var resL      = VarLag.kr(res, lagSec);
+    var sig       = Pan2.ar((tone + clickSig + noiseSig) * env * ampL * 0.5, panL * 2 - 1);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.max(1))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.max(1))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.max(1), resL)]);
+    Out.ar(out, sig);
+}).add;
+
 // Sub Synth
 // Sine basis. presence: distorts a parallel copy and HPFs out the fundamental from it,
 //   so only upper harmonics are added — the sine itself stays pure.
