@@ -231,7 +231,7 @@ SynthDef(\snare, { |out=0, n=48, amp=0.8, pan=0.5, lag=0,
 }).add;
 
 // Sub Synth
-// Sine basis. presence: distorts a parallel copy and HPFs out the fundamental from it,
+// presence: distorts a parallel copy and HPFs out the fundamental from it,
 //   so only upper harmonics are added — the sine itself stays pure.
 // lfoRate/lfoDepth: amplitude tremolo whose phase resets on each note trigger (starts at full amp).
 // sweep: 2-octave pitch sweep on trigger — 1=falls from 2 octaves above, -1=rises from below, 0=off.
