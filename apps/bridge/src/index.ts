@@ -7,6 +7,8 @@ declare type Event = {
   id: string,
   params: Record<string, any>,
   time: number, // in cycles, e.g. 1, 2.25, 3.065 etc.
+  delta: number, // time to event in 
+  unixtime: number, // in milliseconds
   type: string,
   cps: number
 };
@@ -59,6 +61,8 @@ wss.on('connection', ws => {
     const args = [
       { type: 's' as const, value: 'cps' }, { type: 'f' as const, value: msg.cps ?? 0.5 },
       { type: 's' as const, value: 'time' }, { type: 'f' as const, value: msg.time ?? 0 },
+      { type: 's' as const, value: 'delta' }, { type: 'f' as const, value: msg.delta ?? 0 },
+      { type: 's' as const, value: 'unixtime' }, { type: 'f' as const, value: msg.unixtime ?? 0 },
       ...Object.entries(msg.params).flatMap(([key, val]) => {
         if(key === 'e' || key === 'm') return [] // skip type field
         const oscVal = toOscArg(val as JsonPrimitive)

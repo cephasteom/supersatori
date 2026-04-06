@@ -60,32 +60,6 @@ s.waitForBoot {
         dict
     };
 
-    // Parallel TempoClock driven by incoming cps + cycle position
-    ~satoriClock = nil;
-    ~clockCps    = nil;
-
-    // Satori sends events ~.1 second before their intended play time.
-    // We anchor the clock so that beat cycleTime fires .1 second from now,
-    // matching that lookahead. This de-jitters WebSocket timing variance.
-    ~lookahead = 0.1; // seconds — match Satori's JS-side lookahead
-
-    ~syncClock = { |cps, cycleTime|
-        var needsResync = false;
-        if(~satoriClock.isNil) {
-            needsResync = true;
-        } {
-            var expectedCycleTime = ~satoriClock.beats;
-            // Detect restart: cycleTime jumped backwards relative to where the clock thinks we are
-            if(cycleTime < (expectedCycleTime - 1)) { needsResync = true };
-            if(cps != ~clockCps) { needsResync = true };
-        };
-        if(needsResync) {
-            if(~satoriClock.notNil) { ~satoriClock.stop };
-            ~satoriClock = TempoClock.new(cps, cycleTime, thisThread.seconds + ~lookahead);
-            ~clockCps = cps;
-        }
-    };
-
     // each stream gets its own group, private bus, and voice dictionary
     ~groups     = Dictionary.new;
     ~buses      = Dictionary.new; // stream -> private audio Bus
@@ -353,18 +327,13 @@ s.waitForBoot {
             var stream    = parts[1]; // e.g. "s0"
             var type      = parts[2]; // "event" or "mutation"
             var params    = ~parseParams.(msg[1..]);
-            var cycleTime = (params[\time] ?? 0).asFloat;
-            var cps       = (params[\cps]  ?? 0.5).asFloat;
+            var delta     = (params.removeAt(\delta) ?? 0).asFloat;
             var streamOut = params.removeAt(\out); // routing: handled via limiter, not forwarded to synths
-            
-            params.removeAt(\time); // don't forward scheduling metadata to synths
 
             // Ensure group/bus infrastructure exists immediately (before scheduling)
             ~getGroup.(stream);
 
-            ~syncClock.(cps, cycleTime);
-
-            ~satoriClock.schedAbs(cycleTime, {
+            SystemClock.sched(delta, {
             
             if(streamOut.notNil) {
                 ~limiters[stream].set(\out, streamOut.asInteger % ~numOutputs);
