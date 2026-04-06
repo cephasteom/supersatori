@@ -62,7 +62,6 @@ wss.on('connection', ws => {
       { type: 's' as const, value: 'cps' }, { type: 'f' as const, value: msg.cps ?? 0.5 },
       { type: 's' as const, value: 'time' }, { type: 'f' as const, value: msg.time ?? 0 },
       { type: 's' as const, value: 'delta' }, { type: 'f' as const, value: msg.delta ?? 0 },
-      { type: 's' as const, value: 'unixtime' }, { type: 'f' as const, value: msg.unixtime ?? 0 },
       ...Object.entries(msg.params).flatMap(([key, val]) => {
         if(key === 'e' || key === 'm') return [] // skip type field
         const oscVal = toOscArg(val as JsonPrimitive)
