@@ -13,7 +13,7 @@
 ~sampleDirs = [
     // "~/samples",
     // "/path/to/more/samples",
-    // "/Users/peterthomas/Documents/personal-development/satori-samples/samples"
+    "/Users/peterthomas/Documents/personal-development/satori-samples/samples"
 ];
 
 // Maximum number of samples to load per bank (files are sorted alphabetically, first N are kept)
