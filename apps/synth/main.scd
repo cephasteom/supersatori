@@ -182,10 +182,10 @@ s.waitForBoot {
     // MIDI output: index destination names, cache MIDIOut instances lazily
     MIDIClient.init;
     ~midiOuts = Dictionary.new;
-    ~midiDeviceNames = MIDIClient.destinations.collect { |ep| ep.name }.as(Set);
+    ~midiDeviceNames = MIDIClient.destinations.collect { |ep| ep.device }.as(Set);
     ~getMidiOut = { |deviceName|
         ~midiOuts[deviceName] ?? {
-            var ep = MIDIClient.destinations.detect { |e| e.name == deviceName };
+            var ep = MIDIClient.destinations.detect { |e| e.device == deviceName };
             if(ep.notNil) {
                 var mo = MIDIOut.newByName(ep.device, ep.name);
                 mo.latency = 0;
