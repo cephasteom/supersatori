@@ -472,7 +472,10 @@ s.waitForBoot {
                 if(~isFxStream.(stream).not) { ~updateSends.(stream, params) };
 
                 if(~isFxStream.(stream).not) {
-                    var midi = params[\midi];
+                    var midi      = params[\midi];
+                    var nudge     = (params[\nudge]     ?? 0).asFloat / 1000;
+                    var mididelay = (params[\mididelay] ?? 0).asFloat / 1000;
+
                     if(midi.notNil) {
                         var midiOut = ~getMidiOut.(midi.asString);
                         if(midiOut.notNil) {
@@ -492,17 +495,19 @@ s.waitForBoot {
                                 ~releaseMidiVoice.(stream, note);
                                 if(voices.size >= 8) { ~releaseMidiVoice.(stream, order.first) };
 
-                                chans.do { |chan| midiOut.noteOn(chan, note, vel) };
-                                ~sendMidiCCs.(midiOut, chans, params);
-
                                 midiVoice = Dictionary.newFrom([\midiOut, midiOut, \note, note, \chans, chans]);
                                 voices[note] = midiVoice;
                                 order.add(note);
 
-                                SystemClock.sched(dur, {
-                                    if(~midiVoices[stream].notNil && (~midiVoices[stream][note] === midiVoice)) {
-                                        ~releaseMidiVoice.(stream, note)
-                                    };
+                                SystemClock.sched(mididelay, {
+                                    chans.do { |chan| midiOut.noteOn(chan, note, vel) };
+                                    ~sendMidiCCs.(midiOut, chans, params);
+                                    SystemClock.sched(dur, {
+                                        if(~midiVoices[stream].notNil && (~midiVoices[stream][note] === midiVoice)) {
+                                            ~releaseMidiVoice.(stream, note)
+                                        };
+                                        nil
+                                    });
                                     nil
                                 });
                             };
@@ -523,14 +528,16 @@ s.waitForBoot {
                             ~releaseVoice.(stream, note);
                             if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
 
-                            synth = Synth(inst.asSymbol, vParams.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
-                            voices[note] = synth;
-                            order.add(note);
-
-                            SystemClock.sched(dur, {
-                                if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
-                                    ~releaseVoice.(stream, note)
-                                };
+                            SystemClock.sched(nudge, {
+                                synth = Synth(inst.asSymbol, vParams.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
+                                voices[note] = synth;
+                                order.add(note);
+                                SystemClock.sched(dur, {
+                                    if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
+                                        ~releaseVoice.(stream, note)
+                                    };
+                                    nil
+                                });
                                 nil
                             });
                         };
