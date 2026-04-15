@@ -91,8 +91,10 @@ s.waitForBoot {
     ~buses      = Dictionary.new; // stream -> private audio Bus
     ~limiters   = Dictionary.new; // stream -> limiter Synth (anchor for effect insertion)
     ~effects    = Dictionary.new; // stream -> Dictionary(effectName -> Synth)
-    ~voices     = Dictionary.new; // stream -> Dictionary(note -> synth)
-    ~voiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
+    ~voices         = Dictionary.new; // stream -> Dictionary(note -> Synth)
+    ~voiceOrder     = Dictionary.new; // stream -> List of notes (oldest first)
+    ~midiVoices     = Dictionary.new; // stream -> Dictionary(note -> midiVoice)
+    ~midiVoiceOrder = Dictionary.new; // stream -> List of notes (oldest first)
     ~fxSends    = Dictionary.new; // sourceStream -> Dictionary(fxStreamName -> sendSynth)
 
     // Container group that always runs after all source stream groups; fx groups live inside it
@@ -176,6 +178,34 @@ s.waitForBoot {
     };
 
     ~loadSamples.();
+
+    // MIDI output: index destination names, cache MIDIOut instances lazily
+    MIDIClient.init;
+    ~midiOuts = Dictionary.new;
+    ~midiDeviceNames = MIDIClient.destinations.collect { |ep| ep.name }.as(Set);
+    ~getMidiOut = { |deviceName|
+        ~midiOuts[deviceName] ?? {
+            var ep = MIDIClient.destinations.detect { |e| e.name == deviceName };
+            if(ep.notNil) {
+                var mo = MIDIOut.newByName(ep.device, ep.name);
+                mo.latency = 0;
+                ~midiOuts[deviceName] = mo;
+                mo
+            } { nil }
+        }
+    };
+
+    // Send any cc<n> params as MIDI CC messages, e.g. cc1:0.5 -> control(chan, 1, 63)
+    ~sendMidiCCs = { |midiOut, chans, params|
+        params.keysValuesDo { |key, val|
+            var k = key.asString;
+            if(k.size > 2 && k.beginsWith("cc") && k.copyToEnd(2).every(_.isDecDigit)) {
+                var ccNum = k.copyToEnd(2).asInteger;
+                var ccVal = (val.asFloat * 127).clip(0, 127).round.asInteger;
+                chans.do { |chan| midiOut.control(chan, ccNum, ccVal) };
+            }
+        }
+    };
 
     // Known effects: key = param name, value = SynthDef name
     ~knownEffects = Dictionary.newFrom([
@@ -300,6 +330,14 @@ s.waitForBoot {
         }
     };
 
+    ~getMidiVoices = { |stream|
+        ~midiVoices[stream] ?? {
+            ~midiVoices[stream]     = Dictionary.new;
+            ~midiVoiceOrder[stream] = List.new;
+            ~midiVoices[stream]
+        }
+    };
+
     // Normalise cut value to an array of stream name strings
     // Accepts: 0, "s0", "0,1", "s0,s1", "all"
     ~resolveStreams = { |cut|
@@ -318,6 +356,11 @@ s.waitForBoot {
             ~voices[stream].do { |synth| synth.set(\r, cutr, \gate, 0) };
             ~voices[stream]     = Dictionary.new;
             ~voiceOrder[stream] = List.new;
+            ~midiVoices[stream].do { |voice|
+                voice[\chans].do { |chan| voice[\midiOut].noteOff(chan, voice[\note], 0) };
+            };
+            ~midiVoices[stream]     = Dictionary.new;
+            ~midiVoiceOrder[stream] = List.new;
         };
     };
 
@@ -327,6 +370,16 @@ s.waitForBoot {
             v[note].set(\gate, 0);
             v.removeAt(note);
             ~voiceOrder[stream].remove(note);
+        };
+    };
+
+    ~releaseMidiVoice = { |stream, note|
+        var v = ~midiVoices[stream];
+        if(v.notNil && v[note].notNil) {
+            var voice = v[note];
+            voice[\chans].do { |chan| voice[\midiOut].noteOff(chan, note, 0) };
+            v.removeAt(note);
+            ~midiVoiceOrder[stream].remove(note);
         };
     };
 
@@ -372,6 +425,14 @@ s.waitForBoot {
             if(type == "mutation") {
                 var pairs = params.getPairs;
                 ~voices[stream].do { |synth| synth.set(*pairs) };
+                ~midiVoices[stream].do { |voice|
+                    var amp = params[\amp];
+                    if(amp.notNil) {
+                        var vel = (amp.asFloat * 127).clip(0, 127).round.asInteger;
+                        voice[\chans].do { |chan| voice[\midiOut].polyTouch(chan, voice[\note], vel) };
+                    };
+                    ~sendMidiCCs.(voice[\midiOut], voice[\chans], params);
+                };
                 ~applyEffects.(stream, params, "mutation");
                 if(~isFxStream.(stream).not) { ~updateSends.(stream, params, "mutation") };
             };
@@ -410,33 +471,72 @@ s.waitForBoot {
                 ~applyEffects.(stream, params);
                 if(~isFxStream.(stream).not) { ~updateSends.(stream, params) };
 
-                if(~isFxStream.(stream).not && inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
-                    var notes    = (params[\n] ?? 60).asString.split($,).collect(_.asFloat);
-                    var voices   = ~getVoices.(stream);
-                    var order    = ~voiceOrder[stream];
-                    var expanded = ~expandChord.(params, notes);
-
-                    expanded.do { |vParams|
-                        var note  = vParams[\n];
-                        var dur   = (vParams[\dur] ?? 250).asFloat / 1000;
-                        var synth;
-
-                        ~releaseVoice.(stream, note);
-                        if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
-
-                        synth = Synth(inst.asSymbol, vParams.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
-                        voices[note] = synth;
-                        order.add(note);
-
-                        SystemClock.sched(dur, {
-                            if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
-                                ~releaseVoice.(stream, note)
+                if(~isFxStream.(stream).not) {
+                    var midi = params[\midi];
+                    if(midi.notNil) {
+                        var midiOut = ~getMidiOut.(midi.asString);
+                        if(midiOut.notNil) {
+                            var notes  = (params[\n] ?? 60).asString.split($,).collect(_.asInteger);
+                            var dur    = (params[\dur] ?? 250).asFloat / 1000;
+                            var vel    = ((params[\amp] ?? 0.8).asFloat * 127).clip(0, 127).round.asInteger;
+                            var chans  = if(params[\midichan].notNil) {
+                                [params[\midichan].asInteger]
+                            } {
+                                (0..15)
                             };
-                            nil
-                        });
+                            var voices = ~getMidiVoices.(stream);
+                            var order  = ~midiVoiceOrder[stream];
+
+                            notes.do { |note|
+                                var midiVoice;
+                                ~releaseMidiVoice.(stream, note);
+                                if(voices.size >= 8) { ~releaseMidiVoice.(stream, order.first) };
+
+                                chans.do { |chan| midiOut.noteOn(chan, note, vel) };
+                                ~sendMidiCCs.(midiOut, chans, params);
+
+                                midiVoice = Dictionary.newFrom([\midiOut, midiOut, \note, note, \chans, chans]);
+                                voices[note] = midiVoice;
+                                order.add(note);
+
+                                SystemClock.sched(dur, {
+                                    if(~midiVoices[stream].notNil && (~midiVoices[stream][note] === midiVoice)) {
+                                        ~releaseMidiVoice.(stream, note)
+                                    };
+                                    nil
+                                });
+                            };
+                        } { "Satori: MIDI device '%' not found".format(midi).postln };
                     };
-                } {
-                    if(inst.notNil) { "Satori: no SynthDef found for inst '%'".format(inst).postln };
+
+                    if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
+                        var notes    = (params[\n] ?? 60).asString.split($,).collect(_.asFloat);
+                        var voices   = ~getVoices.(stream);
+                        var order    = ~voiceOrder[stream];
+                        var expanded = ~expandChord.(params, notes);
+
+                        expanded.do { |vParams|
+                            var note  = vParams[\n];
+                            var dur   = (vParams[\dur] ?? 250).asFloat / 1000;
+                            var synth;
+
+                            ~releaseVoice.(stream, note);
+                            if(voices.size >= 8) { ~releaseVoice.(stream, order.first) };
+
+                            synth = Synth(inst.asSymbol, vParams.getPairs ++ [\out, ~buses[stream].index], ~groups[stream], \addToHead);
+                            voices[note] = synth;
+                            order.add(note);
+
+                            SystemClock.sched(dur, {
+                                if(~voices[stream].notNil && (~voices[stream][note] === synth)) {
+                                    ~releaseVoice.(stream, note)
+                                };
+                                nil
+                            });
+                        };
+                    } {
+                        if(inst.notNil) { "Satori: no SynthDef found for inst '%'".format(inst).postln };
+                    };
                 };
             };
 
