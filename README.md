@@ -16,4 +16,4 @@ The location of your Supercollider install is determined in `scripts/sclang.js`.
 TODO
 
 ## Synthdefs
-Core instruments and effects can be foudn in `synth/synthdefs.scd`. To add your own, edit `synth/custom-synthdefs.scd`.
+Core instruments and effects can be found in `synth/synthdefs.scd`. To add your own, edit `synth/custom-synthdefs.scd`.
