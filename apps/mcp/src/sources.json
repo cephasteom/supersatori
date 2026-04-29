@@ -1,0 +1,31 @@
+{
+    "readme": "https://github.com/cephasteom/Satori/blob/main/README.md",
+    "docs": "https://github.com/cephasteom/Satori/tree/main/src/docs",
+    "language": [
+        "https://github.com/cephasteom/Satori/blob/main/src/core/Pattern.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/Stream.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/Qubit.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/mini.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/parse.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/CA.ts",
+        "https://github.com/cephasteom/Satori/blob/main/src/core/chords.ts"
+    ],
+    "internal-synth-engine": [
+        "https://github.com/cephasteom/Satori/blob/main/src/oto/index.ts",
+        "https://raw.githubusercontent.com/cephasteom/satori-samples/main/samples.json",
+        "https://github.com/cephasteom/CTSynths/blob/main/tone/AMSynth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/tone/FMSynth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/tone/MonoSynth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/tone/Synth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/rnbo/Synth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/rnbo/Sampler2.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/rnbo/Granular2.ts",
+        "https://github.com/cephasteom/CTSynths/blob/main/rnbo/AcidSynth.ts",
+        "https://github.com/cephasteom/CTSynths/blob/af4bce07ba490a3d451b768476fc7ddbfa28b531/rnbo/FXChannel2.ts",
+        "https://github.com/cephasteom/CTSynths/blob/af4bce07ba490a3d451b768476fc7ddbfa28b531/rnbo/Delay.ts",
+        "https://github.com/cephasteom/CTSynths/blob/af4bce07ba490a3d451b768476fc7ddbfa28b531/rnbo/ReverbGen.ts"
+    ],
+    "super-satori-engine": [
+        "https://github.com/cephasteom/supersatori/blob/main/apps/synth/synthdefs.scd"
+    ]
+}
