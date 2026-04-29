@@ -1,5 +1,5 @@
-import { chunkSources } from './chunker.ts';
-import { buildIndex, DB_PATH } from './index-builder.ts';
+import { chunkSources } from './chunker.js';
+import { buildIndex, DB_PATH } from './index-builder.js';
 
 console.error('chunking sources…');
 const chunks = await chunkSources();

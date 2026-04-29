@@ -5,8 +5,9 @@
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
+    "build": "tsc",
     "build-index": "tsx --env-file=.env src/build-index.ts",
-    "start": "tsx --env-file=.env src/index.ts"
+    "start": "node --env-file=.env dist/index.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.1",

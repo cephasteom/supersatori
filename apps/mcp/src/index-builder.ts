@@ -3,7 +3,7 @@ import * as sqliteVec from 'sqlite-vec';
 import OpenAI from 'openai';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import type { Chunk } from './chunker.ts';
+import type { Chunk } from './chunker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const DB_PATH = path.join(__dirname, '../satori.db');
