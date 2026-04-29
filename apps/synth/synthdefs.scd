@@ -113,7 +113,7 @@ SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0, beg
 // n: pitch within grains (midi, 60 = original pitch), independent of scan speed
 // posrand: per-grain position scatter (0-1), overlaps: simultaneous grains
 // gdur: grain duration (ms)
-SynthDef(\granular, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0,
+SynthDef(\granular, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
                        snap=0, cps=1,
                        begin=0, posrand=0.0,
                        gdur=100, overlaps=8,
