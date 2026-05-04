@@ -152,12 +152,13 @@ SynthDef(\granular, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
 // grainrate: grain trigger rate (Hz); 
 // graindur: grain duration as multiple of grain period (1=fills, 2=overlaps)
 // graindensity: simultaneous grains
+// jitter: random variation in grain position (0-1), as fraction of buffer size — helps avoid metallic artifacts when using snap or low grainrate
 SynthDef(\granular2, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
                        snap=0,
                        begin=0, posrand=0.0,
                        grainrate=10, graindur=1.0, graindensity=8,
                        a=10, d=100, s=1.0, r=300, gate=1,
-                       lpf=0, hpf=0, bpf=0, res=1.0|
+                       lpf=0, hpf=0, bpf=0, res=1.0, jitter=0.0003|
     var lagSec      = lag / 1000;
     var ampL        = VarLag.kr(amp, lagSec);
     var panL        = VarLag.kr(pan, lagSec);
@@ -172,7 +173,8 @@ SynthDef(\granular2, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
     var freeRate    = rateL / BufDur.kr(buf) / ControlRate.ir;
     var snapRate    = rateL * 1000 / snap.max(1e-4) / ControlRate.ir;
     var pointerRate = Select.kr(snap > 0, [freeRate, snapRate]);
-    var pointer     = Phasor.kr(0, pointerRate, beginL, 1.0, beginL);
+    var pointer     = Phasor.kr(0, pointerRate, beginL, 1.0, beginL)
+        + LFNoise1.ar(100).bipolar(jitter);
     var gdurSec     = graindurL / grainrateL;
     var sig         = Warp1.ar(2, buf, pointer, nScale, gdurSec, -1, graindensityL, posrand, 2);
     var env         = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
