@@ -441,7 +441,7 @@ s.waitForBoot {
                 var inst = params[\inst];
 
                 // Resolve inst:'sampler' or inst:'granular' + bank/i to a buffer
-                if([\sampler, \granular].includes(inst.asSymbol)) {
+                if([\sampler, \granular, \granular2].includes(inst.asSymbol)) {
 
                     var bank = params[\bank].asSymbol;
                     var idx  = (params[\i] ?? 0).asInteger;
