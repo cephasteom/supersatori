@@ -156,7 +156,7 @@ SynthDef(\granular, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
 SynthDef(\granular2, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
                        snap=0,
                        begin=0, posrand=0.0,
-                       grainrate=10, graindur=1.0, graindensity=8,
+                       grainrate=16, graindur=1.0, graindensity=8,
                        a=10, d=100, s=1.0, r=300, gate=1,
                        lpf=0, hpf=0, bpf=0, res=1.0, jitter=0.0003|
     var lagSec      = lag / 1000;
