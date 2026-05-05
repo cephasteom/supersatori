@@ -60,14 +60,13 @@ s.waitForBoot {
         dict
     };
 
-    // Parallel TempoClock driven by incoming cps + cycle position
+    // Independent TempoClock driven by incoming cps.
+    // 1-second lookahead keeps the SC clock well behind the frontend so events
+    // always arrive early enough to schedule cleanly, absorbing WebSocket jitter.
     ~satoriClock = nil;
     ~clockCps    = nil;
 
-    // Satori sends events ~.1 second before their intended play time.
-    // We anchor the clock so that beat cycleTime fires .1 second from now,
-    // matching that lookahead. This de-jitters WebSocket timing variance.
-    ~lookahead = 0.1; // seconds — match Satori's JS-side lookahead
+    ~lookahead = 1.0; // seconds
 
     ~syncClock = { |cps, cycleTime|
         var needsResync = false;
@@ -75,7 +74,7 @@ s.waitForBoot {
             needsResync = true;
         } {
             var expectedCycleTime = ~satoriClock.beats;
-            // Detect restart: cycleTime jumped backwards relative to where the clock thinks we are
+            // Detect restart: cycleTime jumped backwards
             if(cycleTime < (expectedCycleTime - 1)) { needsResync = true };
             if(cps != ~clockCps) { needsResync = true };
         };
