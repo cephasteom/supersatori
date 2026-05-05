@@ -496,20 +496,21 @@ SynthDef(\lazer, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
 // Modulator envelope (moda, modd, mods, modr) scales the mod index over time
 // Keyscaling: both mod index and amp scale by 2^(-0.5) per octave above middle C
 SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
-                 a=10, d=100, s=0.7, r=300, gate=1,
-                 moda=0, modd=100, mods=1.0, modr=500,
+                 a=10, d=100, s=0.7, r=300, curve=(-4),
+                 gate=1,
+                 moda=0, modd=100, mods=1.0, modr=500, modcurve=(-4),
                  lpf=0, hpf=0, bpf=0, res=1.0|
     var lagSec   = lag / 1000;
     var nL       = VarLag.kr(n, lagSec);
     var freq     = nL.midicps;
     var ks       = (nL - 60) / 12;            // octaves above/below middle C
-    var modIdx   = VarLag.kr(modi, lagSec) * (2 ** (ks * -0.5));
     var ampL     = VarLag.kr(amp, lagSec) * (2 ** (ks * -0.5));
+    var modIdx   = VarLag.kr(modi, lagSec) * (2 ** (ks * -0.5)) * ampL;
     var panL     = VarLag.kr(pan, lagSec);
-    var modEnv   = EnvGen.kr(Env.adsr(moda / 1000, modd / 1000, mods, modr / 1000), gate);
+    var modEnv   = EnvGen.kr(Env.adsr(moda / 1000, modd / 1000, mods, modr / 1000), gate, curve: modcurve);
     var mod      = SinOsc.ar(freq * harm, 0, freq * modIdx * modEnv);
     var car      = SinOsc.ar(freq + mod);
-    var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf);
+    var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf, curve: curve);
     var lpfL  = VarLag.kr(lpf, lagSec);
     var hpfL  = VarLag.kr(hpf, lagSec);
     var bpfL  = VarLag.kr(bpf, lagSec);
