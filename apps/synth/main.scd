@@ -518,7 +518,7 @@ s.waitForBoot {
                         };
 
                         if(inst.notNil && SynthDescLib.global.at(inst.asSymbol).notNil) {
-                            var notes = (params[\n] ?? 60).asString.split($,)
+                            var notes = (params[\n] ?? params[\freq] ?? 60).asString.split($,)
                                 .collect(_.asFloat)
                                 .asSet.asArray.sort; // unique and sorted
                             var voices   = ~getVoices.(stream);

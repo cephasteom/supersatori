@@ -507,10 +507,10 @@ SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
     var ampL     = VarLag.kr(amp, lagSec) * (2 ** (ks * -0.5));
     var modIdx   = VarLag.kr(modi, lagSec) * (2 ** (ks * -0.5)) * ampL;
     var panL     = VarLag.kr(pan, lagSec);
-    var modEnv   = EnvGen.kr(Env.adsr(moda / 1000, modd / 1000, mods, modr / 1000), gate, curve: modcurve);
+    var modEnv   = EnvGen.kr(Env.adsr(moda / 1000, modd / 1000, mods, modr / 1000, curve: modcurve), gate);
     var mod      = SinOsc.ar(freq * harm, 0, freq * modIdx * modEnv);
     var car      = SinOsc.ar(freq + mod);
-    var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf, curve: curve);
+    var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000, curve: curve), gate, doneAction: Done.freeSelf);
     var lpfL  = VarLag.kr(lpf, lagSec);
     var hpfL  = VarLag.kr(hpf, lagSec);
     var bpfL  = VarLag.kr(bpf, lagSec);
@@ -521,3 +521,88 @@ SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
 }).add;
+
+// Bandpass filter saw - adapted from Eli Fieldsteel's SynthDef in SuperCollider Tutorial 16
+// See https://www.youtube.com/watch?v=oR4VZy2LJ60&list=PLPYzvS8A_rTaNDweXe6PX4CXSGq4iEWYC&index=17
+// use n for MIDI note input or freq for direct frequency; 
+// detune is slow random vibrato in cents; 
+// cfhzmin/max and cfmin/max/rqmin/max are ranges for the random filter modulation
+SynthDef(\bpfsaw, {
+    |out=0, n=60.0, freq=0.0,
+     amp=0.5, pan=0.5, lag=0,
+     detune=0.2,
+     cfhzmin=0.1, cfhzmax=0.3,
+     cfmin=500, cfmax=2000, rqmin=0.1, rqmax=0.2,
+     a=10, d=100, s=0.7, r=300, curve=(-4),
+     gate=1,
+     lpf=0, hpf=0, bpf=0, res=1.0|
+
+    var lagSec   = (lag / 1000).max(0);
+    var f        = VarLag.kr(Select.kr(freq > 0, [n.midicps, freq]), lagSec);
+    var ampL     = VarLag.kr(amp.clip(0.0, inf), lagSec);
+    var panL     = VarLag.kr(pan.clip(0, 1), lagSec);
+
+    // Lagged filter params
+    var lpfL     = VarLag.kr(lpf.clip(0, 1), lagSec);
+    var hpfL     = VarLag.kr(hpf.clip(0, 1), lagSec);
+    var bpfL     = VarLag.kr(bpf.clip(0, 1), lagSec);
+    var resL     = VarLag.kr(res.clip(0.01, 1), lagSec);
+
+    // Safe exprange bounds — must be strictly positive, lo < hi
+    var safeCfmin   = VarLag.kr(cfmin.max(20), lagSec);
+    var safeCfmax   = VarLag.kr(cfmax.max(safeCfmin + 1).min(20000), lagSec);
+    var safeRqmin   = VarLag.kr(rqmin.max(0.01), lagSec);
+    var safeRqmax   = VarLag.kr(rqmax.max(safeRqmin + 0.001).min(2.0), lagSec);
+    var safeCfhzmin = VarLag.kr(cfhzmin.max(0.01), lagSec);
+    var safeCfhzmax = VarLag.kr(cfhzmax.max(safeCfhzmin + 0.001).min(100), lagSec);
+
+    var env = EnvGen.kr(
+        Env.adsr(
+            (a / 1000).max(0.001),
+            (d / 1000).max(0.001),
+            s.clip(0, 1),
+            (r / 1000).max(0.001),
+            curve: curve
+        ),
+        gate, doneAction: Done.freeSelf
+    );
+
+    var sig = Saw.ar(f * {LFNoise1.kr(0.5, detune).midiratio}!2);
+
+    sig = BPF.ar(
+        sig,
+        {LFNoise1.kr(
+            LFNoise1.kr(4).exprange(safeCfhzmin, safeCfhzmax)
+        ).exprange(safeCfmin, safeCfmax)}!2,
+        {LFNoise1.kr(0.5).exprange(safeRqmin, safeRqmax)}!2
+    );
+
+    sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1) * env * ampL;
+
+    // Select-based filters — only active when param > 0
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200).max(20))]);
+    sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000).min(20000))]);
+    sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL.linexp(0.01, 1, 2.0, 0.01))]);
+
+    Out.ar(out, sig);
+}).add;
+
+// Template for new synths — copy and paste, then fill in the ... with the core signal generation. 
+// SynthDef(\template, {
+//     |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+//      a=10, d=100, s=0.7, r=300, curve=(-4),
+//      gate=1,
+//      lpf=0, hpf=0, bpf=0, res=1.0|
+//     var lagSec   = lag / 1000;
+//     var nL       = VarLag.kr(n, lagSec);
+//     var freq     = nL.midicps;
+//     var ampL     = VarLag.kr(amp, lagSec);
+//     var panL     = VarLag.kr(pan, lagSec);
+//     var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf, curve: curve);
+//     var sig = ...
+//     sig = Pan2.ar(sig * ampL * 0.5, panL * 2 - 1);
+//     sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+//     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
+//     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
+//     Out.ar(out, sig);
+// }).add;
