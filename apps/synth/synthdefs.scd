@@ -1,5 +1,5 @@
 // Reverb — reads from and replaces the group's private bus
-SynthDef(\satoriReverb, { |in=0, wet=0.5, room=0.8, damp=1.0, lag=0|
+SynthDef(\satoriReverb, { |in=0, wet=0.5, room=0.8, damp=1.0, lag=10|
     var lagSec = lag / 1000;
     var wetL   = VarLag.kr(wet, lagSec);
     var roomL  = VarLag.kr(room, lagSec);
