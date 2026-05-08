@@ -66,82 +66,68 @@ SynthDef(\satoriFolder, { |in=0, wet=0.5, gain=0.5, lag=0|
 }).add;
 
 SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
-    var lagSec  = lag / 1000;
-    var wetL     = VarLag.kr(wet,     lagSec);
-    var ageL     = VarLag.kr(age,     lagSec);
-    var flutterL = VarLag.kr(flutter, lagSec);
+    var lagSec, wetL, ageL, flutterL;
+    var sig, dry, out;
+    var drive;
+    var wowRate, wowDepth, wowL, wowR;
+    var flutterRate, flutterDepth, flutterModL, flutterModR;
+    var lpFreq;
+    var dropoutRate, dropout;
+    var hissAmp;
+    var rumbleAmp;
+    var crackleAmp;
+    var clickRate;
+    var ghostDepth, ghostDelay;
 
-    var sig = In.ar(in, 2);
-    var dry = sig;
+    lagSec   = lag / 1000;
+    wetL     = VarLag.kr(wet,     lagSec);
+    ageL     = VarLag.kr(age,     lagSec);
+    flutterL = VarLag.kr(flutter, lagSec);
 
-    // --- Wow & Flutter ---
-    // Wow: slow pitch drift, depth and rate driven by flutter
-    var wowRate  = LFNoise1.kr(0.3).range(0.5, 2.0) * flutterL;
-    var wowDepth = flutterL * 0.003;
-    var wowL     = SinOsc.kr(wowRate,        0).range(1 - wowDepth, 1 + wowDepth);
-    var wowR     = SinOsc.kr(wowRate * 1.07, 0.4).range(1 - wowDepth, 1 + wowDepth);
-
-    // Flutter: mechanical high-frequency wobble
-    var flutterRate  = LFNoise1.kr(0.1).range(8, 12);
-    var flutterDepth = flutterL * 0.0015;
-    var flutterModL  = SinOsc.kr(flutterRate,        0).range(1 - flutterDepth, 1 + flutterDepth);
-    var flutterModR  = SinOsc.kr(flutterRate * 0.97, 0.2).range(1 - flutterDepth, 1 + flutterDepth);
-
-    var pitched = sig * [wowL * flutterModL, wowR * flutterModR];
-
-    // --- FM noise: oxide interference at the magnetic layer ---
-    // Filtered noise modulates a short delay, smearing transients
-    var oxideNoise = LPF.ar(WhiteNoise.ar(1), 800) * ageL * 0.003;
-    var fmSig      = DelayC.ar(pitched, 0.02, (0.01 + oxideNoise).abs);
+    sig = In.ar(in, 2);
+    dry = sig;
 
     // --- Saturation ---
-    // Noise rides the drive amount so distortion character constantly shifts
-    var driveBase   = ageL.linexp(0, 1, 1.0, 6.0);
-    var driveNoise  = LFNoise1.ar([200, 210]).range(0, 1) * ageL * 3;
-    var drive       = driveBase + driveNoise;
-    var saturated   = (fmSig * drive).tanh * (1 / drive.sqrt);
+    drive = ageL.linexp(0, 1, 1.0, 6.0);
+    sig = (sig * drive).tanh * (1 / drive.sqrt);
 
-    // --- Ring modulation: noise sidebands into the signal spectrum ---
-    // White noise ring-mods against the saturated signal, age controls depth
-    var ringDepth = ageL.linexp(0, 1, 0.0, 2.5);
-    var ringNoise = HPF.ar(WhiteNoise.ar([1,1]), 6000) * ringDepth;
-    var ringed    = saturated * (1 + ringNoise);
+    // --- Wow & Flutter ---
+    wowRate      = LFNoise1.kr(0.3).range(0.5, 2.0);
+    wowDepth     = flutterL * 0.003;
+    wowL         = SinOsc.kr(wowRate,        0).range(1 - wowDepth, 1 + wowDepth);
+    wowR         = SinOsc.kr(wowRate * 1.07, 0.4).range(1 - wowDepth, 1 + wowDepth);
+    flutterRate  = LFNoise1.kr(0.1).range(8, 12);
+    flutterDepth = flutterL * 0.0015;
+    flutterModL  = SinOsc.kr(flutterRate,        0).range(1 - flutterDepth, 1 + flutterDepth);
+    flutterModR  = SinOsc.kr(flutterRate * 0.97, 0.2).range(1 - flutterDepth, 1 + flutterDepth);
+    sig = sig * [wowL * flutterModL, wowR * flutterModR];
 
-    // --- HF roll-off: older tape = duller ---
-    var lpFreq  = ageL.linexp(0, 1, 18000, 6000);
-    var rolled  = LPF.ar(ringed, lpFreq);
-
-    // --- Noise floor ---
-    var hissAmp   = ageL.linexp(0, 1, 0.0001, 0.008);
-    var hiss      = HPF.ar(WhiteNoise.ar([1,1]) * hissAmp, 4000);
-
-    var rumbleAmp = ageL.linexp(0, 1, 0.00005, 0.003);
-    var rumble    = LPF.ar(PinkNoise.ar([1,1]) * rumbleAmp, 300);
-
-    // --- Crackle gating: surface noise interrupts and shapes the signal ---
-    // Rather than sitting on top, crackle acts as a VCA dip
-    var crackleGate = 1 - (Crackle.ar([1.95, 1.94]) * ageL.linexp(0, 1, 0.0, 0.8));
-    var gated       = rolled * crackleGate;
-
-    // Residual crackle added back as additive noise too
-    var crackleAmp  = ageL.linexp(0, 1, 0.00005, 0.004);
-    var crackle     = Crackle.ar([1.95, 1.94]) * crackleAmp;
-
-    // --- Pops & clicks ---
-    var clickRate = ageL.linexp(0, 1, 0.05, 4.0);
-    var clicks    = LFNoise0.kr(clickRate).range(0, 1)
-                    * Impulse.ar(clickRate * 0.5)
-                    * ageL.linexp(0, 1, 0.001, 0.08);
+    // --- HF roll-off ---
+    lpFreq = ageL.linexp(0, 1, 18000, 6000);
+    sig = LPF.ar(sig, lpFreq);
 
     // --- Dropout ---
-    var dropoutRate = flutterL.linexp(0, 1, 0.3, 2.0);
-    var dropout     = LFNoise1.kr(dropoutRate).range(0.85, 1.0).pow(3);
+    dropoutRate = flutterL.linexp(0, 1, 0.3, 2.0);
+    dropout     = LFNoise1.kr(dropoutRate).range(0.85, 1.0).pow(3);
+    sig = sig * dropout;
 
-    // --- Final mix ---
-    var noise  = hiss + rumble + crackle + clicks;
-    var wetSig = (gated * dropout) + noise;
+    // --- Hiss ---
+    hissAmp = ageL.linexp(0, 1, 0.0001, 0.004);
+    sig = sig + HPF.ar(WhiteNoise.ar([1,1]) * hissAmp, 4000);
 
-    var out = XFade2.ar(dry, wetSig, wetL * 2 - 1);
+    // --- Rumble ---
+    rumbleAmp = ageL.linexp(0, 1, 0.00005, 0.003);
+    sig = sig + LPF.ar(PinkNoise.ar([1,1]) * rumbleAmp, 300);
+
+    // --- Crackle ---
+    crackleAmp = ageL.linexp(0, 1, 0.00005, 0.004);
+    sig = sig + (Crackle.ar(1.95, [1,1]) * crackleAmp);
+
+    // --- Clicks ---
+    clickRate = ageL.linexp(0, 1, 0.05, 4.0);
+    sig = sig + (LFNoise0.kr(clickRate).range(0, 1) * Impulse.ar(clickRate * 0.5) * ageL.linexp(0, 1, 0.001, 0.08));
+
+    out = XFade2.ar(dry, sig, wetL * 2 - 1);
     ReplaceOut.ar(in, out);
 }).add;
 
