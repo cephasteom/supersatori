@@ -214,7 +214,8 @@ s.waitForBoot {
         \chorus, \satoriChorus,
         \crush,  \satoriBitcrusher,
         \dist,   \satoriOverdrive,
-        \fold,   \satoriFolder
+        \fold,   \satoriFolder,
+        \tape,   \satoriTape
     ]);
 
     // Returns true for fx stream names: "fx" followed by one or more digits (e.g. fx0, fx1)

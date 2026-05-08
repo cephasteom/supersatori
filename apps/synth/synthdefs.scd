@@ -65,6 +65,86 @@ SynthDef(\satoriFolder, { |in=0, wet=0.5, gain=0.5, lag=0|
     ReplaceOut.ar(in, XFade2.ar(sig, folded, wetL * 2 - 1));
 }).add;
 
+SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
+    var lagSec  = lag / 1000;
+    var wetL     = VarLag.kr(wet,     lagSec);
+    var ageL     = VarLag.kr(age,     lagSec);
+    var flutterL = VarLag.kr(flutter, lagSec);
+
+    var sig = In.ar(in, 2);
+    var dry = sig;
+
+    // --- Wow & Flutter ---
+    // Wow: slow pitch drift, depth and rate driven by flutter
+    var wowRate  = LFNoise1.kr(0.3).range(0.5, 2.0) * flutterL;
+    var wowDepth = flutterL * 0.003;
+    var wowL     = SinOsc.kr(wowRate,        0).range(1 - wowDepth, 1 + wowDepth);
+    var wowR     = SinOsc.kr(wowRate * 1.07, 0.4).range(1 - wowDepth, 1 + wowDepth);
+
+    // Flutter: mechanical high-frequency wobble
+    var flutterRate  = LFNoise1.kr(0.1).range(8, 12);
+    var flutterDepth = flutterL * 0.0015;
+    var flutterModL  = SinOsc.kr(flutterRate,        0).range(1 - flutterDepth, 1 + flutterDepth);
+    var flutterModR  = SinOsc.kr(flutterRate * 0.97, 0.2).range(1 - flutterDepth, 1 + flutterDepth);
+
+    var pitched = sig * [wowL * flutterModL, wowR * flutterModR];
+
+    // --- FM noise: oxide interference at the magnetic layer ---
+    // Filtered noise modulates a short delay, smearing transients
+    var oxideNoise = LPF.ar(WhiteNoise.ar(1), 800) * ageL * 0.003;
+    var fmSig      = DelayC.ar(pitched, 0.02, (0.01 + oxideNoise).abs);
+
+    // --- Saturation ---
+    // Noise rides the drive amount so distortion character constantly shifts
+    var driveBase   = ageL.linexp(0, 1, 1.0, 6.0);
+    var driveNoise  = LFNoise1.ar([200, 210]).range(0, 1) * ageL * 3;
+    var drive       = driveBase + driveNoise;
+    var saturated   = (fmSig * drive).tanh * (1 / drive.sqrt);
+
+    // --- Ring modulation: noise sidebands into the signal spectrum ---
+    // White noise ring-mods against the saturated signal, age controls depth
+    var ringDepth = ageL.linexp(0, 1, 0.0, 2.5);
+    var ringNoise = HPF.ar(WhiteNoise.ar([1,1]), 6000) * ringDepth;
+    var ringed    = saturated * (1 + ringNoise);
+
+    // --- HF roll-off: older tape = duller ---
+    var lpFreq  = ageL.linexp(0, 1, 18000, 6000);
+    var rolled  = LPF.ar(ringed, lpFreq);
+
+    // --- Noise floor ---
+    var hissAmp   = ageL.linexp(0, 1, 0.0001, 0.008);
+    var hiss      = HPF.ar(WhiteNoise.ar([1,1]) * hissAmp, 4000);
+
+    var rumbleAmp = ageL.linexp(0, 1, 0.00005, 0.003);
+    var rumble    = LPF.ar(PinkNoise.ar([1,1]) * rumbleAmp, 300);
+
+    // --- Crackle gating: surface noise interrupts and shapes the signal ---
+    // Rather than sitting on top, crackle acts as a VCA dip
+    var crackleGate = 1 - (Crackle.ar([1.95, 1.94]) * ageL.linexp(0, 1, 0.0, 0.8));
+    var gated       = rolled * crackleGate;
+
+    // Residual crackle added back as additive noise too
+    var crackleAmp  = ageL.linexp(0, 1, 0.00005, 0.004);
+    var crackle     = Crackle.ar([1.95, 1.94]) * crackleAmp;
+
+    // --- Pops & clicks ---
+    var clickRate = ageL.linexp(0, 1, 0.05, 4.0);
+    var clicks    = LFNoise0.kr(clickRate).range(0, 1)
+                    * Impulse.ar(clickRate * 0.5)
+                    * ageL.linexp(0, 1, 0.001, 0.08);
+
+    // --- Dropout ---
+    var dropoutRate = flutterL.linexp(0, 1, 0.3, 2.0);
+    var dropout     = LFNoise1.kr(dropoutRate).range(0.85, 1.0).pow(3);
+
+    // --- Final mix ---
+    var noise  = hiss + rumble + crackle + clicks;
+    var wetSig = (gated * dropout) + noise;
+
+    var out = XFade2.ar(dry, wetSig, wetL * 2 - 1);
+    ReplaceOut.ar(in, out);
+}).add;
+
 // Per-stream limiter — sits at the tail of each group's private bus
 SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
     Out.ar(out, Limiter.ar(In.ar(in, 2), level));
@@ -411,7 +491,7 @@ SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var lpfL      = VarLag.kr(lpf, lagSec);
     var hpfL      = VarLag.kr(hpf, lagSec);
     var bpfL      = VarLag.kr(bpf, lagSec);
-    var resL      = VarLag.kr(res, lagSec);
+    var resL      = VarLag.kr(res.clip(0.01, 1), lagSec);
     sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env * 0.5);
     sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
