@@ -154,8 +154,8 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
 }).add;
 
 // Per-stream limiter — sits at the tail of each group's private bus
-SynthDef(\satoriLimiter, { |in=0, out=0, level=0.9|
-    Out.ar(out, Limiter.ar(In.ar(in, 2), level));
+SynthDef(\satoriLimiter, { |in=0, out=0, level=1.0|
+    Out.ar(out, Limiter.ar(In.ar(in, 2) * level));
 }).add;
 
 // FX send — reads from a source stream bus and additively writes to an fx stream bus

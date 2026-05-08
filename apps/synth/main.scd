@@ -411,7 +411,8 @@ s.waitForBoot {
             var params    = ~parseParams.(msg[1..]);
             var cycleTime = (params[\time] ?? 0).asFloat;
             var cps       = (params[\cps]  ?? 0.5).asFloat;
-            var streamOut = params.removeAt(\out); // routing: handled via limiter, not forwarded to synths
+            var streamOut   = params.removeAt(\out);   // routing: handled via limiter, not forwarded to synths
+            var streamLevel = params.removeAt(\level); // final fader: applied to limiter, not forwarded to synths
             params.removeAt(\time); // don't forward scheduling metadata to synths
 
             // Ensure group/bus infrastructure exists immediately (before scheduling)
@@ -423,6 +424,9 @@ s.waitForBoot {
             
                 if(streamOut.notNil) {
                     ~limiters[stream].set(\out, streamOut.asInteger % ~numOutputs);
+                };
+                if(streamLevel.notNil) {
+                    ~limiters[stream].set(\level, streamLevel.asFloat);
                 };
 
                 if(type == "mutation") {
