@@ -77,15 +77,27 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
     var rumbleAmp;
     var crackleAmp;
     var clickRate;
-    var ghostDepth, ghostDelay;
+    var fadeIn, fadeOut, fader;
 
     lagSec   = lag / 1000;
     wetL     = VarLag.kr(wet,     lagSec);
     ageL     = VarLag.kr(age,     lagSec);
     flutterL = VarLag.kr(flutter, lagSec);
 
+    // Fade in over lag ms on instantiation
+    fadeIn = Line.kr(0, 1, lagSec);
+
     sig = In.ar(in, 2);
-    dry = sig;
+    dry = In.ar(in, 2);
+
+    // Fade out over lag ms when input has been silent for 1 second
+    fadeOut = EnvGen.kr(
+        Env([1, 1, 0], [1, lagSec]),
+        gate: DetectSilence.ar(sig[0], time: 1.0),
+        doneAction: Done.freeSelf
+    );
+
+    fader = fadeIn * fadeOut;
 
     // --- Saturation ---
     drive = ageL.linexp(0, 1, 1.0, 6.0);
@@ -112,7 +124,7 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
     sig = sig * dropout;
 
     // --- Hiss ---
-    hissAmp = ageL.linexp(0, 1, 0.0001, 0.004);
+    hissAmp = ageL.linexp(0, 1, 0.0001, 0.0008);
     sig = sig + HPF.ar(WhiteNoise.ar([1,1]) * hissAmp, 4000);
 
     // --- Rumble ---
@@ -125,9 +137,19 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
 
     // --- Clicks ---
     clickRate = ageL.linexp(0, 1, 0.05, 4.0);
-    sig = sig + (LFNoise0.kr(clickRate).range(0, 1) * Impulse.ar(clickRate * 0.5) * ageL.linexp(0, 1, 0.001, 0.08));
+    sig = sig + (LFNoise0.kr(clickRate).range(0, 1) * Dust.ar(clickRate * 0.5) * ageL.linexp(0, 1, 0.001, 0.008));
 
-    out = XFade2.ar(dry, sig, wetL * 2 - 1);
+    // --- Non-linear compression to tame peaks from saturation and modulation, and glue the effect together ---
+    sig = Compander.ar(sig, sig,
+        thresh: 0.5,
+        slopeBelow: 1,
+        slopeAbove: 0.4,
+        clampTime: 0.01,
+        relaxTime: 0.1
+    );
+
+    // Apply fader only to wet signal, dry always passes through
+    out = XFade2.ar(dry, sig * fader, wetL * 2 - 1);
     ReplaceOut.ar(in, out);
 }).add;
 
