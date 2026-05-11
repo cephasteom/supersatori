@@ -176,7 +176,7 @@ SynthDef(\satoriFeed, { |in=0, wet=0.5, feedback=0.7, tone=0.7, lag=0|
     var lagSec    = lag / 1000;
     var wetL      = VarLag.kr(wet, lagSec);
     var feedbackL = VarLag.kr(feedback, lagSec).clip(0, 0.99);
-    var toneL     = VarLag.kr(tone, lagSec).linexp(0, 1, 400, 12000);
+    var toneL     = VarLag.kr(tone, lagSec).linexp(0, 1, 20, 20000);
     var sig       = In.ar(in, 2);
     var fb        = LocalIn.ar(2);
     var sustained = sig + fb;
@@ -219,7 +219,7 @@ SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0, beg
     var bpfL  = VarLag.kr(bpf, lagSec);
     var resL  = VarLag.kr(res, lagSec);
     sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -257,7 +257,7 @@ SynthDef(\granular, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
     var bpfL  = VarLag.kr(bpf, lagSec);
     var resL  = VarLag.kr(res, lagSec);
     sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -302,7 +302,7 @@ SynthDef(\granular2, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0,
     var bpfL  = VarLag.kr(bpf, lagSec);
     var resL  = VarLag.kr(res, lagSec);
     sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -344,7 +344,7 @@ SynthDef(\kick, { |out=0, n=36, amp=0.8, pan=0.5, lag=0,
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res, lagSec);
     var sig       = Pan2.ar((tone + clickSig + noiseSig) * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -388,7 +388,7 @@ SynthDef(\snare, { |out=0, n=48, amp=0.8, pan=0.5, lag=0,
     // Snare noise: HPF white noise for wire rattle, independently decaying
     var snareNoise = HPF.ar(WhiteNoise.ar, 1500) * Decay2.ar(atrig, 0.001, tightL / 1000) * snapL;
     var sig       = Pan2.ar((bodySig + snareNoise) * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -435,7 +435,7 @@ SynthDef(\sub, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res, lagSec);
     sig = Pan2.ar(sig * env * ampL * ampMod * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -468,7 +468,7 @@ SynthDef(\subtractive, { |out=0, n=60, wave=0, pw=0.5, amp=0.5, pan=0.5, lag=0,
     var bpfL    = VarLag.kr(bpf, lagSec);
     var resL    = VarLag.kr(res, lagSec);
     var sig     = Pan2.ar(filtered * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -497,7 +497,7 @@ SynthDef(\karplus, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var bpfL    = VarLag.kr(bpf, lagSec);
     var resL    = VarLag.kr(res, lagSec);
     var sig     = Pan2.ar(plucked * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -532,7 +532,7 @@ SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res.clip(0.01, 1), lagSec);
     sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env * 0.5);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -568,7 +568,7 @@ SynthDef(\acid, { |out=0, n=60, wave=0, amp=0.5, pan=0.5, lag=0,
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res, lagSec);
     var sig       = Pan2.ar(filtered * env * ampL * (1 + accentL) * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -604,7 +604,7 @@ SynthDef(\lazer, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res, lagSec);
     sig = Pan2.ar(sig * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -635,7 +635,7 @@ SynthDef(\fm, { |out=0, n=60, harm=2.0, modi=3.0, amp=0.5, pan=0.5, lag=0,
     var bpfL  = VarLag.kr(bpf, lagSec);
     var resL  = VarLag.kr(res, lagSec);
     var sig   = Pan2.ar(car * env * ampL * 0.5, panL * 2 - 1);
-    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+    sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
     Out.ar(out, sig);
@@ -720,7 +720,7 @@ SynthDef(\bpfsaw, {
 //     var env      = EnvGen.kr(Env.adsr(a / 1000, d / 1000, s, r / 1000), gate, doneAction: Done.freeSelf, curve: curve);
 //     var sig = ...
 //     sig = Pan2.ar(sig * ampL * 0.5, panL * 2 - 1);
-//     sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 200))]);
+//     sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
 //     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
 //     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
 //     Out.ar(out, sig);
