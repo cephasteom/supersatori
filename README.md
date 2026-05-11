@@ -24,6 +24,17 @@ Use the name of the effect as the wet/dry value, and as a prefix to addition arg
 }
 ```
 
+By default, effects are always chained distortions -> chorus -> delay -> reverb -> tape. You can control the order of the chain using an index after the effect name. E.g.:
+```js
+{
+    dist0: 0.5, // set distortion first
+    dist0drive: .3, // include index with params
+    reverb1: .5 // reverb second
+}
+```
+
+You can also use this system to apply more than one of each effect.
+
 ## Usage with other systems
 TODO
 

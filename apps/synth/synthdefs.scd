@@ -153,6 +153,37 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
     ReplaceOut.ar(in, out);
 }).add;
 
+// Spectral blur — smears magnitude across FFT bins, diffused through a short allpass network
+SynthDef(\satoriBlur, { |in=0, wet=0.5, smear=0.5, lag=0|
+    var lagSec  = lag / 1000;
+    var wetL    = VarLag.kr(wet, lagSec);
+    var smearL  = VarLag.kr(smear, lagSec);
+    var sig     = In.ar(in, 2);
+    var blurred = sig.collect({ |channel|
+        var chain = FFT(LocalBuf(2048), channel);
+        chain = PV_MagSmear(chain, (smearL * 64).round);
+        IFFT(chain);
+    });
+    // Two-stage allpass diffusion: smooths FFT block edges without adding reverb tail.
+    // Asymmetric L/R delay times preserve stereo width.
+    blurred = AllpassN.ar(blurred, 0.04, [0.0173, 0.0231], 0.04);
+    blurred = AllpassN.ar(blurred, 0.04, [0.0107, 0.0193], 0.04);
+    ReplaceOut.ar(in, XFade2.ar(sig, blurred, wetL * 2 - 1));
+}).add;
+
+// Feedback sustainer — recirculates signal through a tonefiltered loop; feedback controls sustain length
+SynthDef(\satoriFeed, { |in=0, wet=0.5, feedback=0.7, tone=0.7, lag=0|
+    var lagSec    = lag / 1000;
+    var wetL      = VarLag.kr(wet, lagSec);
+    var feedbackL = VarLag.kr(feedback, lagSec).clip(0, 0.99);
+    var toneL     = VarLag.kr(tone, lagSec).linexp(0, 1, 400, 12000);
+    var sig       = In.ar(in, 2);
+    var fb        = LocalIn.ar(2);
+    var sustained = sig + fb;
+    LocalOut.ar(LPF.ar(sustained, toneL) * feedbackL);
+    ReplaceOut.ar(in, XFade2.ar(sig, sustained, wetL * 2 - 1));
+}).add;
+
 // Per-stream limiter — sits at the tail of each group's private bus
 SynthDef(\satoriLimiter, { |in=0, out=0, level=1.0|
     Out.ar(out, Limiter.ar(In.ar(in, 2) * level));

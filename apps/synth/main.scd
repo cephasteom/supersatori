@@ -215,7 +215,23 @@ s.waitForBoot {
         \crush,  \satoriBitcrusher,
         \dist,   \satoriOverdrive,
         \fold,   \satoriFolder,
-        \tape,   \satoriTape
+        \tape,   \satoriTape,
+        \blur,   \satoriBlur,
+        \feed,   \satoriFeed
+    ]);
+
+    // Default chain position for bare effect keys (no integer suffix).
+    // Explicit integers (e.g. reverb1) always take precedence.
+    ~effectDefaultOrder = Dictionary.newFrom([
+        \dist,   0,
+        \crush,  1,
+        \fold,   2,
+        \chorus, 3,
+        \delay,  4,
+        \reverb, 5,
+        \tape,   6,
+        \blur,   7,
+        \feed,   8
     ]);
 
     // Returns true for fx stream names: "fx" followed by one or more digits (e.g. fx0, fx1)
@@ -284,7 +300,7 @@ s.waitForBoot {
                 if(k.beginsWith(en)) {
                     var rest = k.copyToEnd(en.size);
                     if(rest.isEmpty) {
-                        instances = instances.add([key.asSymbol, synthDefName, nil]);
+                        instances = instances.add([key.asSymbol, synthDefName, ~effectDefaultOrder[effectName] ?? 999]);
                     } {
                         if(rest.every { |c| c.isDecDigit }) {
                             instances = instances.add([key.asSymbol, synthDefName, rest.asInteger]);
@@ -294,11 +310,8 @@ s.waitForBoot {
             }
         };
 
-        // Sort by order index ascending; legacy (nil) entries at end
-        instances = instances.sort { |a, b|
-            var ai = a[2], bi = b[2];
-            if(ai.isNil) { false } { if(bi.isNil) { true } { ai < bi } }
-        };
+        // Sort by order index ascending
+        instances = instances.sort { |a, b| a[2] < b[2] };
 
         activeKeys = instances.collect { |i| i[0] }.as(Set);
 
@@ -364,7 +377,7 @@ s.waitForBoot {
         };
         if(type == "event") {
             sends.keysValuesDo { |fxStream, synth|
-                if(fxKeys.includes(fxStream).not) { synth.set(\wet, 0) }
+                if(fxKeys.includes(fxStream).not) { synth.set(\wet, 0, \lag, 100) }
             }
         };
     };
