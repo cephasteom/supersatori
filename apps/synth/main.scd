@@ -244,12 +244,11 @@ s.waitForBoot {
         }
     };
 
-    // Extract params for an effect by stripping its name prefix
-    // e.g. (reverb, {reverb: 0.5, reverbroom: 0.8}) -> [\wet, 0.5, \size, 0.8]
-    // Extract SynthDef args for an effect from params, stripping the effect name prefix
-    // e.g. effectName=reverb, params={reverb:0.5, reverbroom:0.8} -> [\wet, 0.5, \size, 0.8]
-    ~effectParams = { |effectName, params|
-        var prefix = effectName.asString;
+    // Extract SynthDef args for an effect instance from params, stripping the instance key prefix.
+    // e.g. instanceKey=\reverb1, params={reverb1:0.5, reverb1room:0.8} -> [\wet, 0.5, \room, 0.8]
+    // Legacy bare keys work the same: instanceKey=\reverb, params={reverb:0.5, reverbroom:0.8}
+    ~effectParams = { |instanceKey, params|
+        var prefix = instanceKey.asString;
         var pairs  = [];
         params.keysValuesDo { |key, val|
             var k = key.asString;
@@ -257,7 +256,11 @@ s.waitForBoot {
                 pairs = pairs ++ [\wet, val];
             } {
                 if(k.beginsWith(prefix)) {
-                    pairs = pairs ++ [k.copyToEnd(prefix.size).asSymbol, val];
+                    var suffix = k.copyToEnd(prefix.size);
+                    // skip if suffix starts with a digit — that's another effect instance (e.g. "dist1" when prefix is "dist")
+                    if(suffix.size > 0 && { suffix[0].isDecDigit.not }) {
+                        pairs = pairs ++ [suffix.asSymbol, val];
+                    }
                 }
             }
         };
@@ -267,29 +270,72 @@ s.waitForBoot {
 
     ~applyEffects = { |stream, params, type="event"|
         var streamEffects = ~effects[stream];
-        ~knownEffects.keysValuesDo { |effectName, synthDefName|
-            var wet = params[effectName];
-            if(wet.notNil) {
-                var pairs = [\in, ~buses[stream].index] ++ ~effectParams.(effectName, params);
-                if(streamEffects[effectName].isNil) {
-                    streamEffects[effectName] = Synth.new(
-                        synthDefName, pairs, ~limiters[stream], \addBefore
-                    );
-                } {
-                    streamEffects[effectName].set(*pairs);
+        var instances = [];
+        var activeKeys;
+        var anchor;
+
+        // Collect effect instances whose wet key is present in params.
+        // Recognises bare legacy keys (e.g. \reverb) and ordered keys (e.g. \reverb1, \dist0).
+        // Each entry: [instanceKey, synthDefName, orderIndex or nil for legacy]
+        params.keysDo { |key|
+            var k = key.asString;
+            ~knownEffects.keysValuesDo { |effectName, synthDefName|
+                var en = effectName.asString;
+                if(k.beginsWith(en)) {
+                    var rest = k.copyToEnd(en.size);
+                    if(rest.isEmpty) {
+                        instances = instances.add([key.asSymbol, synthDefName, nil]);
+                    } {
+                        if(rest.every { |c| c.isDecDigit }) {
+                            instances = instances.add([key.asSymbol, synthDefName, rest.asInteger]);
+                        }
+                    }
                 }
-            } {
-                if(type == "mutation" && streamEffects[effectName].notNil) {
-                    // apply sub-params (e.g. reverbroom) even without wet
-                    var pairs = ~effectParams.(effectName, params);
-                    if(pairs.size > 0) { streamEffects[effectName].set(*pairs) };
-                };
-                // if an event, set the wet param to 0 to bypass the effect if it's not included in the params
-                if(type == "event" && streamEffects[effectName].notNil) {
-                    streamEffects[effectName].set(\wet, 0);
-                };
             }
-        }
+        };
+
+        // Sort by order index ascending; legacy (nil) entries at end
+        instances = instances.sort { |a, b|
+            var ai = a[2], bi = b[2];
+            if(ai.isNil) { false } { if(bi.isNil) { true } { ai < bi } }
+        };
+
+        activeKeys = instances.collect { |i| i[0] }.as(Set);
+
+        // Create or update synths for active instances
+        instances.do { |inst|
+            var instKey = inst[0];
+            var defName = inst[1];
+            var pairs   = [\in, ~buses[stream].index] ++ ~effectParams.(instKey, params);
+            if(streamEffects[instKey].isNil) {
+                streamEffects[instKey] = Synth.new(defName, pairs, ~limiters[stream], \addBefore);
+            } {
+                streamEffects[instKey].set(*pairs);
+            }
+        };
+
+        // Handle existing effects absent from this event
+        streamEffects.keysValuesDo { |instKey, synth|
+            if(activeKeys.includes(instKey).not) {
+                if(type == "event") {
+                    synth.set(\wet, 0);
+                } {
+                    var pairs = ~effectParams.(instKey, params);
+                    if(pairs.size > 0) { synth.set(*pairs) };
+                }
+            }
+        };
+
+        // Enforce chain ordering: traverse instances in reverse, each moved before the previous anchor.
+        // This builds: voices -> effect[0] -> effect[1] -> ... -> limiter
+        anchor = ~limiters[stream];
+        instances.reverseDo { |inst|
+            var synth = streamEffects[inst[0]];
+            if(synth.notNil) {
+                synth.moveBefore(anchor);
+                anchor = synth;
+            }
+        };
     };
 
     // Create or update send synths from sourceStream to any fx streams named in params.

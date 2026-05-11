@@ -10,7 +10,19 @@ The location of your Supercollider install is determined in `scripts/sclang.js`.
 
 ## Usage with Satori
 * Reload Satori, adding \`?engine=supersatori\` to the URL. e.g. [https://satori.cephasteom.co.uk?engine=supersatori]
-* Use as normal, but `inst` parameter becomes name of the synthdef
+* Use as normal, but `inst` parameter becomes name of the synthdef, and params are the synthdef arguments.
+
+In addition to the usual Satori behaviour, there are some additional features:
+
+### Effects
+Use the name of the effect as the wet/dry value, and as a prefix to addition arguments. E.g.:
+```js
+{
+    reverb: 0.5,
+    reverbroom: .6,
+    reverbdamp: .1
+}
+```
 
 ## Usage with other systems
 TODO
