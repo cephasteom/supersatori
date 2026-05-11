@@ -66,7 +66,7 @@ s.waitForBoot {
     ~satoriClock = nil;
     ~clockCps    = nil;
 
-    ~lookahead = 1.0; // seconds
+    ~lookahead = 0.1; // seconds
 
     ~syncClock = { |cps, cycleTime|
         var needsResync = false;
