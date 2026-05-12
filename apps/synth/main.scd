@@ -100,6 +100,10 @@ s.waitForBoot {
     // Container group that always runs after all source stream groups; fx groups live inside it
     ~fxContainer = Group.new(s, \addToTail);
 
+    // 4 shared sidechain buses (bus0–bus3): any stream can send to these for use as gate detectors
+    ~sidechainBuses = Array.fill(4, { Bus.audio(s, 2) });
+    ~sidechainSends = Dictionary.new; // stream -> Dictionary(busIndex -> sendSynth)
+
     // Sample banks: bankName -> Array of Buffers (sorted by filename)
     ~banks = Dictionary.new;
     // Zero-crossing snap points: bankName -> Array of Arrays of Float (0-1 positions)
@@ -209,6 +213,7 @@ s.waitForBoot {
 
     // Known effects: key = param name, value = SynthDef name
     ~knownEffects = Dictionary.newFrom([
+        \ngate,  \satoriGate,
         \reverb, \satoriReverb,
         \delay,  \satoriDelay,
         \chorus, \satoriChorus,
@@ -223,6 +228,7 @@ s.waitForBoot {
     // Default chain position for bare effect keys (no integer suffix).
     // Explicit integers (e.g. reverb1) always take precedence.
     ~effectDefaultOrder = Dictionary.newFrom([
+        \ngate,  -1,
         \dist,   0,
         \crush,  1,
         \fold,   2,
@@ -320,6 +326,10 @@ s.waitForBoot {
             var instKey = inst[0];
             var defName = inst[1];
             var pairs   = [\in, ~buses[stream].index] ++ ~effectParams.(instKey, params);
+            // resolve sidechain bus name strings (e.g. "bus0", "fx0") to bus indices
+            pairs = pairs.clump(2).collect { |kv|
+                if(kv[0] == \sidechain) { [\sidechain, ~resolveBusRef.(kv[1])] } { kv }
+            }.flatten;
             if(streamEffects[instKey].isNil) {
                 streamEffects[instKey] = Synth.new(defName, pairs, ~limiters[stream], \addBefore);
             } {
@@ -378,6 +388,51 @@ s.waitForBoot {
         if(type == "event") {
             sends.keysValuesDo { |fxStream, synth|
                 if(fxKeys.includes(fxStream).not) { synth.set(\wet, 0, \lag, 100) }
+            }
+        };
+    };
+
+    // Resolve a bus reference string to an audio bus index.
+    // "bus0"–"bus3" -> ~sidechainBuses[n].index; any stream name -> ~buses[name].index; else -1.
+    ~resolveBusRef = { |val|
+        var str = val.asString;
+        case
+        { str.beginsWith("bus") && { str.copyToEnd(3).every { |c| c.isDecDigit } } } {
+            var idx = str.copyToEnd(3).asInteger;
+            if(idx < ~sidechainBuses.size) { ~sidechainBuses[idx].index } { -1 }
+        }
+        { ~buses[str.asSymbol].notNil } { ~buses[str.asSymbol].index }
+        { -1 }
+    };
+
+    // Create or update send synths from sourceStream to any sidechain buses named in params (bus0–bus3).
+    ~updateSidechainSends = { |sourceStream, params, type="event"|
+        var sends = ~sidechainSends[sourceStream] ?? {
+            ~sidechainSends[sourceStream] = Dictionary.new;
+            ~sidechainSends[sourceStream]
+        };
+        var activeBuses = Set.new;
+        params.keysValuesDo { |key, val|
+            var k = key.asString;
+            if(k.beginsWith("bus") && { k.copyToEnd(3).every { |c| c.isDecDigit } }) {
+                var idx = k.copyToEnd(3).asInteger;
+                if(idx < ~sidechainBuses.size) {
+                    activeBuses.add(idx);
+                    if(sends[idx].isNil) {
+                        sends[idx] = Synth.new(\satoriSend, [
+                            \in,  ~buses[sourceStream].index,
+                            \out, ~sidechainBuses[idx].index,
+                            \wet, val.asFloat
+                        ], ~limiters[sourceStream], \addAfter);
+                    } {
+                        sends[idx].set(\wet, val.asFloat);
+                    }
+                }
+            }
+        };
+        if(type == "event") {
+            sends.keysValuesDo { |idx, synth|
+                if(activeBuses.includes(idx).not) { synth.set(\wet, 0, \lag, 100) }
             }
         };
     };
@@ -501,6 +556,7 @@ s.waitForBoot {
                     };
                     ~applyEffects.(stream, params, "mutation");
                     if(~isFxStream.(stream).not) { ~updateSends.(stream, params, "mutation") };
+                    ~updateSidechainSends.(stream, params, "mutation");
                 };
 
                 if(type == "event") {
@@ -536,6 +592,7 @@ s.waitForBoot {
                     if(params[\cut].notNil) { ~cutStreams.(params[\cut], params[\cutr] ?? 5) };
                     ~applyEffects.(stream, params);
                     if(~isFxStream.(stream).not) { ~updateSends.(stream, params) };
+                    ~updateSidechainSends.(stream, params);
 
                     if(~isFxStream.(stream).not) {
                         var midi      = params[\midi];

@@ -94,7 +94,6 @@ SynthDef(\satoriTape, { |in=0, wet=0.5, age=0.5, flutter=0.5, lag=10|
     fadeOut = EnvGen.kr(
         Env([1, 1, 0], [1, lagSec]),
         gate: DetectSilence.ar(sig[0], time: 1.0),
-        doneAction: Done.freeSelf
     );
 
     fader = fadeIn * fadeOut;
@@ -182,6 +181,29 @@ SynthDef(\satoriFeed, { |in=0, wet=0.5, feedback=0.7, tone=0.7, lag=0|
     var sustained = sig + fb;
     LocalOut.ar(LPF.ar(sustained, toneL) * feedbackL);
     ReplaceOut.ar(in, XFade2.ar(sig, sustained, wetL * 2 - 1));
+}).add;
+
+// Noise gate — threshold and reduce are 0-1; a and r are attack/release in ms
+// reduce=1 silences when gate closes, reduce=0.5 attenuates by half; wet=1 fully active
+// Noise gate — threshold and reduce are 0-1; a and r are attack/release in ms
+// reduce=1 silences when gate closes, reduce=0.5 attenuates by half; wet=1 fully active
+// sidechain: bus index to use as detector instead of the gate's own input (-1 = disabled)
+SynthDef(\satoriGate, { |in=0, wet=1.0, threshold=0.1, reduce=1.0, a=10, r=100, lag=0, sidechain= -1|
+    var lagSec     = lag / 1000;
+    var wetL       = VarLag.kr(wet, lagSec);
+    var thresholdL = VarLag.kr(threshold, lagSec);
+    var reduceL    = VarLag.kr(reduce, lagSec);
+    var aSec       = VarLag.kr(a, lagSec) / 1000;
+    var rSec       = VarLag.kr(r, lagSec) / 1000;
+    var sig        = In.ar(in, 2);
+    var scSig      = In.ar(sidechain.max(0), 1);
+    var detector   = Select.ar(sidechain >= 0, [sig[0], scSig]);
+    var ampKr      = Amplitude.kr(detector, 0.002, 0.002);
+    var open       = (ampKr > thresholdL).asFloat;
+    var gateGain   = LagUD.kr(open, aSec, rSec);
+    var gain       = 1 - (reduceL * (1 - gateGain));
+    var gated      = sig * gain;
+    ReplaceOut.ar(in, XFade2.ar(sig, gated, wetL * 2 - 1));
 }).add;
 
 // Per-stream limiter — sits at the tail of each group's private bus
