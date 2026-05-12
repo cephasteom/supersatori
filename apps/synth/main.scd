@@ -483,7 +483,7 @@ s.waitForBoot {
             var type      = parts[2]; // "event" or "mutation"
             var params    = ~parseParams.(msg[1..]);
             var cycleTime = (params[\time] ?? 0).asFloat;
-            var cps       = (params[\cps]  ?? 0.5).asFloat;
+            var cps       = (params[\cps] ?? 0.5).asFloat;
             var streamOut   = params.removeAt(\out);   // routing: handled via limiter, not forwarded to synths
             var streamLevel = params.removeAt(\level); // final fader: applied to limiter, not forwarded to synths
             params.removeAt(\time); // don't forward scheduling metadata to synths
@@ -563,6 +563,8 @@ s.waitForBoot {
 
                                 notes.do { |note|
                                     var midiVoice;
+                                    var start    = nudge + (strum * i) + mididelay;
+                                    var end      = start + dur;
                                     ~releaseMidiVoice.(stream, note);
                                     if(voices.size >= 8) { ~releaseMidiVoice.(stream, order.first) };
 
@@ -570,10 +572,10 @@ s.waitForBoot {
                                     voices[note] = midiVoice;
                                     order.add(note);
 
-                                    SystemClock.sched(mididelay, {
+                                    SystemClock.sched(start, {
                                         chans.do { |chan| midiOut.noteOn(chan, note, vel) };
                                         ~sendMidiCCs.(midiOut, chans, params);
-                                        SystemClock.sched(dur, {
+                                        SystemClock.sched(end, {
                                             if(~midiVoices[stream].notNil && (~midiVoices[stream][note] === midiVoice)) {
                                                 ~releaseMidiVoice.(stream, note)
                                             };
