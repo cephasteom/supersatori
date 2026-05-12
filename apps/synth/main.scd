@@ -106,8 +106,6 @@ s.waitForBoot {
 
     // Sample banks: bankName -> Array of Buffers (sorted by filename)
     ~banks = Dictionary.new;
-    // Zero-crossing snap points: bankName -> Array of Arrays of Float (0-1 positions)
-    ~transients = Dictionary.new;
 
     ~loadSamples = {
         var audioExts = #["wav", "aif", "aiff", "flac", "mp3"];
@@ -134,45 +132,6 @@ s.waitForBoot {
                                 Buffer.readChannel(s, f.fullPath, channels: chansList[i]);
                             };
                             "Satori: loaded bank '%' (% samples)".format(bankName, files.size).postln;
-
-                            if(~detectTransients) {
-                                // If enabled, detect zero crossings for each sample in a background thread and store as markers for snapping
-                                // Analyse zero crossings in a background thread (one read per file)
-                                fork {
-                                    var snapPoints = Array.newClear(files.size);
-                                    files.do { |f, i|
-                                        var sf      = SoundFile.new;
-                                        var markers = [0.0];
-                                        if(sf.openRead(f.fullPath)) {
-                                            var nFrames    = sf.numFrames;
-                                            var nChans     = sf.numChannels;
-                                            var numMarkers = 256;
-                                            var stride     = max(1, (nFrames / numMarkers).floor).asInteger;
-                                            var data       = FloatArray.newClear(nFrames * nChans);
-                                            sf.readData(data);
-                                            sf.close;
-                                            numMarkers.do { |chunk|
-                                                var searchStart = (chunk * stride).asInteger;
-                                                var windowEnd   = min(searchStart + stride, nFrames - 1).asInteger;
-                                                var found = false;
-                                                (windowEnd - searchStart).do { |j|
-                                                    var frame = searchStart + j;
-                                                    if(found.not) {
-                                                        if(data[frame * nChans] * data[(frame + 1) * nChans] <= 0) {
-                                                            markers = markers.add(frame / nFrames);
-                                                            found = true;
-                                                        }
-                                                    }
-                                                };
-                                                0.yield; // yield between each window so OSC handlers can run
-                                            };
-                                        } { sf.close };
-                                        snapPoints[i] = markers;
-                                    };
-                                    ~transients[bankName] = snapPoints;
-                                    "Satori: transients ready fo;r bank '%'".format(bankName).postln;
-                                };
-                            };
                         }
                     }
                 } {
@@ -572,18 +531,6 @@ s.waitForBoot {
                         if(bufs.notNil && { bufs.size > 0 }) {
                             var bufIdx = idx % bufs.size;
                             params[\buf] = bufs[bufIdx].bufnum;
-
-                            // snap begin to nearest zero crossing if specified (sampler only)
-                            if(inst.asSymbol == \sampler) {
-                                var begin = params[\begin] ?? 0;
-                                var stt   = params[\stt] ?? 0;
-                                if(begin.asBoolean && stt.asBoolean) {
-                                    var markers = ~transients[bank] ?? [];
-                                    if(markers.notNil && { markers.size > 0 }) {
-                                        params[\begin] = markers.minItem { |m| (m - begin).abs };
-                                    }
-                                };
-                            };
                         } {
                             "Satori: bank '%' not found or empty".format(bank).postln;
                         };

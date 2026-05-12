@@ -18,4 +18,3 @@
 
 // Maximum number of samples to load per bank (files are sorted alphabetically, first N are kept)
 ~maxBuffersPerBank = 16;
-~detectTransients = false; // whether to detect zero crossings for each sample and make them available as markers for snapping
