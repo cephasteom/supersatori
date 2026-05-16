@@ -220,7 +220,7 @@ SynthDef(\satoriSend, { |in=0, out=0, wet=0, lag=0|
 // Sampler — buffers are normalised to stereo at load time (mono files get ch0 duplicated)
 // Rate chain: snap (ms, 0=off) sets base rate so buffer lasts snap ms, then scaled by n (midi, 60=1x) and rate
 // Negative rate plays backwards. Without snap, just n * rate.
-SynthDef(\sampler, { |out=0, buf=0, amp=0.5, pan=0.5, lag=0, n=60, rate=1.0, begin=0, loop=0,
+SynthDef(\sampler, { |out=0, buf=0, amp=1, pan=0.5, lag=0, n=60, rate=1.0, begin=0, loop=0,
                       snap=0, a=1, d=0, s=1.0, r=50, gate=1,
                       lpf=0, hpf=0, bpf=0, res=1.0|
     var lagSec    = lag / 1000;
@@ -527,7 +527,7 @@ SynthDef(\karplus, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
 // Pad — 7 detuned saws spread symmetrically across the stereo field (supersaw style)
 // detune: total spread in cents across all voices; drift: per-voice slow random Hz offset
 // Slow attack default (a=500). No d/s defaults encourage open sustain.
-SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
+SynthDef(\pad, { |out=0, n=60, amp=1, pan=0.5, lag=0,
                   detune=30, drift=0.5,
                   a=500, d=0, s=1.0, r=800, gate=1,
                   lpf=0, hpf=0, bpf=0, res=1.0|
@@ -552,7 +552,7 @@ SynthDef(\pad, { |out=0, n=60, amp=0.5, pan=0.5, lag=0,
     var hpfL      = VarLag.kr(hpf, lagSec);
     var bpfL      = VarLag.kr(bpf, lagSec);
     var resL      = VarLag.kr(res.clip(0.01, 1), lagSec);
-    sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env * 0.5);
+    sig = Balance2.ar(sig[0], sig[1], panL * 2 - 1, ampL * env);
     sig = Select.ar(lpfL > 0, [sig, LPF.ar(sig, lpfL.linexp(0, 1, 20000, 20))]);
     sig = Select.ar(hpfL > 0, [sig, HPF.ar(sig, hpfL.linexp(0, 1, 20, 20000))]);
     sig = Select.ar(bpfL > 0, [sig, BPF.ar(sig, bpfL.linexp(0, 1, 20, 20000), resL)]);
